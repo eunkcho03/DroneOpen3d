@@ -16,10 +16,8 @@ from functions_connect import (
     connect_to_unity_nbv,
 )
 
-from functions_compute import (
-    DepthFrameProcessor,
-    ExtrusionFusionReconstruction,
-)
+from functions_compute2 import Open3DOccupancyVoxelMap
+
 
 from nbv_functions import (
     generate_candidate_views_from_bbox,
