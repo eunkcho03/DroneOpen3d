@@ -22,12 +22,6 @@ def normalize_vector(v, eps=1e-9):
 
 
 def rotation_matrix_to_quaternion(R):
-    """
-    Convert a 3x3 rotation matrix to quaternion [x, y, z, w].
-
-    This format matches Unity's Quaternion convention:
-        x, y, z, w
-    """
 
     R = np.asarray(R, dtype=float)
 
@@ -138,8 +132,9 @@ def _as_points_array(points):
 def generate_candidate_views_from_bbox(
     bbox_min,
     bbox_max,
+    fov_degrees,
     num_views=4,
-    distance_factor=2,
+    margin_factor=1.2,
     height_fraction=0.6,
 ):
     """
@@ -152,6 +147,11 @@ def generate_candidate_views_from_bbox(
         - look_at: Unity/world target position [x, y, z]
         - rotation_quat: quaternion [x, y, z, w] that faces look_at
 
+    Distance from the object center is derived from the camera's
+    vertical field of view and the object's full 3D bounding-sphere
+    radius, so the whole object is guaranteed to fit inside the frame
+    (margin_factor adds a safety buffer on top of the tight fit).
+
     Important:
         position + look_at are the single source of truth.
         They are used for both:
@@ -162,18 +162,26 @@ def generate_candidate_views_from_bbox(
     bbox_min = np.asarray(bbox_min, dtype=float)
     bbox_max = np.asarray(bbox_max, dtype=float)
 
-    if np.any(bbox_max < bbox_min):
-        raise ValueError("bbox_max must be >= bbox_min in every axis")
-
     center = 0.5 * (bbox_min + bbox_max)
     size = bbox_max - bbox_min
 
-    # Horizontal radius needed to be outside bbox footprint
-    half_diag_xz = 0.5 * np.sqrt(size[0] ** 2 + size[2] ** 2)
-    radius = half_diag_xz * distance_factor
+    # Bounding-sphere radius covers the object regardless of viewing angle
+    # (unlike a footprint-only radius, this accounts for height too).
+    object_radius = 0.5 * np.linalg.norm(size)
 
     # Candidate camera height
     cam_y = bbox_min[1] + height_fraction * size[1]
+    vertical_offset = cam_y - center[1]
+
+    # Distance from the object center needed for the bounding sphere to
+    # fit inside the camera's vertical FOV cone.
+    half_fov_rad = 0.5 * np.deg2rad(fov_degrees)
+    min_distance_to_center = (object_radius / np.sin(half_fov_rad)) * margin_factor
+
+    # Horizontal radius that, combined with the camera's vertical offset,
+    # achieves at least that distance from the object center.
+    horizontal_radius_sq = min_distance_to_center ** 2 - vertical_offset ** 2
+    radius = np.sqrt(max(horizontal_radius_sq, 0.0))
 
     candidate_views = []
 
@@ -411,10 +419,6 @@ def render_candidate_view_figure(
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection="3d")
 
-    # Plot convention:
-    #   plot x = world X
-    #   plot y = world Z
-    #   plot z = world Y / height
 
     if len(occupied_voxels) > 0:
         ax.scatter(
@@ -438,9 +442,7 @@ def render_candidate_view_figure(
             depthshade=False,
         )
 
-    # ---------------------------------------------------------
-    # Put back candidate camera triangle + viewing line
-    # ---------------------------------------------------------
+
     if show_camera_triangle:
         cam_x = camera_position[0]
         cam_y_plot = camera_position[2]   # world Z -> plot Y
