@@ -128,33 +128,34 @@ def _as_points_array(points):
 # ============================================================
 # Candidate view generation
 # ============================================================
-
 def generate_candidate_views_from_bbox(
     bbox_min,
     bbox_max,
     fov_degrees,
-    num_views=4,
+    num_azimuth_views=8,
+    height_fractions=(0.35, 0.60, 0.85),
     margin_factor=1.2,
-    height_fraction=0.6,
+    min_radius_scale=0.25,
 ):
     """
-    Generate fixed candidate viewpoints around the object bounding box.
+    Generate diverse candidate viewpoints around the object bounding box.
+
+    This version varies both:
+        1. azimuth angle around the object
+        2. camera height / elevation angle
 
     Each candidate view includes:
         - view_id
         - angle_deg
+        - height_fraction
+        - elevation_deg
         - position: Unity/world camera position [x, y, z]
         - look_at: Unity/world target position [x, y, z]
         - rotation_quat: quaternion [x, y, z, w] that faces look_at
 
-    Distance from the object center is derived from the camera's
-    vertical field of view and the object's full 3D bounding-sphere
-    radius, so the whole object is guaranteed to fit inside the frame
-    (margin_factor adds a safety buffer on top of the tight fit).
-
     Important:
-        position + look_at are the single source of truth.
-        They are used for both:
+        position + look_at remain the single source of truth.
+        They are still usable for:
             1. Matplotlib candidate-view gain image
             2. Unity drone target pose
     """
@@ -165,52 +166,72 @@ def generate_candidate_views_from_bbox(
     center = 0.5 * (bbox_min + bbox_max)
     size = bbox_max - bbox_min
 
-    # Bounding-sphere radius covers the object regardless of viewing angle
-    # (unlike a footprint-only radius, this accounts for height too).
+    # Full 3D bounding-sphere radius, so height is considered too.
     object_radius = 0.5 * np.linalg.norm(size)
 
-    # Candidate camera height
-    cam_y = bbox_min[1] + height_fraction * size[1]
-    vertical_offset = cam_y - center[1]
-
-    # Distance from the object center needed for the bounding sphere to
-    # fit inside the camera's vertical FOV cone.
     half_fov_rad = 0.5 * np.deg2rad(fov_degrees)
-    min_distance_to_center = (object_radius / np.sin(half_fov_rad)) * margin_factor
 
-    # Horizontal radius that, combined with the camera's vertical offset,
-    # achieves at least that distance from the object center.
-    horizontal_radius_sq = min_distance_to_center ** 2 - vertical_offset ** 2
-    radius = np.sqrt(max(horizontal_radius_sq, 0.0))
+    # Minimum distance from camera to object center so the whole object fits.
+    min_distance_to_center = (
+        object_radius / np.sin(half_fov_rad)
+    ) * margin_factor
+
+    # Avoid a zero horizontal radius when the camera is very high/low.
+    footprint_radius = 0.5 * np.linalg.norm(size[[0, 2]])
+    min_horizontal_radius = min_radius_scale * footprint_radius
 
     candidate_views = []
+    view_id = 0
 
-    for i in range(num_views):
-        angle = 2.0 * np.pi * i / num_views
+    for height_fraction in height_fractions:
+        cam_y = bbox_min[1] + height_fraction * size[1]
+        vertical_offset = cam_y - center[1]
 
-        cam_pos = np.array([
-            center[0] + radius * np.cos(angle),
-            cam_y,
-            center[2] + radius * np.sin(angle),
-        ], dtype=float)
+        # Compute horizontal radius required to maintain the same 3D distance.
+        horizontal_radius_sq = min_distance_to_center ** 2 - vertical_offset ** 2
+        radius = np.sqrt(max(horizontal_radius_sq, 0.0))
 
-        look_at = center.copy()
+        # Safety clamp so the camera does not collapse above the object.
+        radius = max(radius, min_horizontal_radius)
 
-        rotation_quat = look_at_quaternion(
-            camera_position=cam_pos,
-            target_position=look_at,
-        )
+        for i in range(num_azimuth_views):
+            angle = 2.0 * np.pi * i / num_azimuth_views
 
-        candidate_views.append({
-            "view_id": i,
-            "angle_deg": float(np.degrees(angle)),
-            "position": cam_pos,
-            "look_at": look_at,
-            "rotation_quat": rotation_quat,
-        })
+            cam_pos = np.array([
+                center[0] + radius * np.cos(angle),
+                cam_y,
+                center[2] + radius * np.sin(angle),
+            ], dtype=float)
+
+            look_at = center.copy()
+
+            rotation_quat = look_at_quaternion(
+                camera_position=cam_pos,
+                target_position=look_at,
+            )
+
+            horizontal_dist = np.linalg.norm([
+                cam_pos[0] - center[0],
+                cam_pos[2] - center[2],
+            ])
+
+            elevation_deg = np.degrees(
+                np.arctan2(cam_pos[1] - center[1], horizontal_dist + 1e-9)
+            )
+
+            candidate_views.append({
+                "view_id": view_id,
+                "angle_deg": float(np.degrees(angle)),
+                "height_fraction": float(height_fraction),
+                "elevation_deg": float(elevation_deg),
+                "position": cam_pos,
+                "look_at": look_at,
+                "rotation_quat": rotation_quat,
+            })
+
+            view_id += 1
 
     return candidate_views
-
 
 # ============================================================
 # Image-based unknown area score
@@ -571,8 +592,8 @@ def compute_next_best_view(
         total_area = int(area_result["total_area_pixels"])
 
         travel_distance = 0.0 if current_camera_position is None else float(np.linalg.norm(camera_position - current_camera_position))
-        score = gain_ratio / (1.0 + lambda_distance * travel_distance)
-
+        score = raw_gain_score 
+        #score = gain_ratio / (1.0 + lambda_distance * travel_distance)
         view.update({"gain_ratio": gain_ratio, "gain_score_raw": raw_gain_score, "unknown_area_pixels": unknown_area, "known_area_pixels": known_area, "total_area_pixels": total_area, "distance": travel_distance, "score": score})
 
         if save_debug_images:

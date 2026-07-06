@@ -34,11 +34,11 @@ NBV_PORT = 9020
 
 FLOOR_HEIGHT = 0.0
 OBJECT_HEIGHT_THRESHOLD = 1e-3
-VOXEL_SIZE = 0.001
+VOXEL_SIZE = 0.0025
 BBOX_MARGIN = 0.05
 
-CARVE_MARGIN = 0.5 * VOXEL_SIZE
-CARVE_WITH_INVALID_DEPTH = False
+CARVE_MARGIN = 0 # 0.5 * VOXEL_SIZE
+CARVE_WITH_INVALID_DEPTH = True
 
 USE_NBV = True
 NBV_NUM_VIEWS = 8
@@ -248,6 +248,14 @@ def main():
                 recon.occupied_volume + recon.unknown_volume
             )
 
+            print(
+                f"Volume summary | "
+                f"occupied: {recon.occupied_volume:.6f} m³ | "
+                f"unknown: {recon.unknown_volume:.6f} m³ | "
+                f"occupied + unknown: {total_unknown_occupied_volume:.6f} m³ | "
+                f"true Unity volume: {true_volume:.6f} m³"
+            )
+
             total_unknown_occupied_volume_history.append(
                 total_unknown_occupied_volume
             )
@@ -283,13 +291,13 @@ def main():
                 object_center = 0.5 * (recon.bbox_min + recon.bbox_max)
 
                 candidate_views = generate_candidate_views_from_bbox(
-                    bbox_min=recon.bbox_min,
-                    bbox_max=recon.bbox_max,
-                    fov_degrees=fov,
-                    num_views=NBV_NUM_VIEWS,
-                    margin_factor=NBV_MARGIN_FACTOR,
-                    height_fraction=NBV_HEIGHT_FRACTION,
-                )
+                        bbox_min=recon.bbox_min,
+                        bbox_max=recon.bbox_max,
+                        fov_degrees=fov,
+                        num_azimuth_views=8,
+                        height_fractions=(0.2, 0.60, 1.0, 1.2),
+                        margin_factor=1.2,
+                    )
 
                 if len(visited_view_ids) < len(candidate_views):
                     best_view, best_score = compute_next_best_view(
