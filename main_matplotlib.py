@@ -37,59 +37,31 @@ OBJECT_HEIGHT_THRESHOLD = 1e-3
 VOXEL_SIZE = 0.0025
 BBOX_MARGIN = 0.05
 
-CARVE_MARGIN = 0
+CARVE_MARGIN = 0 # 0.5 * VOXEL_SIZE
 CARVE_WITH_INVALID_DEPTH = True
 
 USE_NBV = True
 NBV_NUM_VIEWS = 8
 NBV_MARGIN_FACTOR = 1.2
+NBV_HEIGHT_FRACTION = 2
 NBV_LAMBDA_DISTANCE = 1.5
-
-# --------------------------------------------------
-# Surface-based NBV settings
-# --------------------------------------------------
-# Important:
-# The new NBV score does NOT need Matplotlib rendering.
-# Keep this False for speed.
-NBV_SAVE_DEBUG_IMAGES = False
-
+NBV_SAVE_DEBUG_IMAGES = True
 NBV_OUTPUT_FOLDER = "potential_views"
-
-# Low-resolution virtual camera used for projected surface-area scoring.
-# Larger = more detailed but slower.
-NBV_PROJECTION_WIDTH = 160
-NBV_PROJECTION_HEIGHT = 160
-
-# Unity camera is usually 16:9 for 1280x720.
-# If your received depth image is not 16:9, this is overwritten each frame.
-NBV_ASPECT_RATIO = 16.0 / 9.0
-
-# If True, penalizes views that require longer travel distance.
-# For now, I recommend False while debugging NBV behavior.
-NBV_USE_DISTANCE_PENALTY = False
-
 SEND_NBV_TO_UNITY = True
 
 # --------------------------------------------------
 # Movement gating settings
 # --------------------------------------------------
-NBV_POSITION_TOLERANCE = 0.03
-NBV_STABLE_FRAMES_REQUIRED = 1
+NBV_POSITION_TOLERANCE = 0.03          # meters
+NBV_STABLE_FRAMES_REQUIRED = 1      # require N frames near target before updating
 
 
 def print_candidate_views(candidate_views):
     print("\n--- Candidate Views ---")
-
     for view in candidate_views:
         print(
             f"View {view['view_id']:02d} | "
-            f"angle = {view.get('angle_deg', 0.0):.1f} deg | "
-            f"height_frac = {view.get('height_fraction', -1):.2f} | "
-            f"visible unknown surface = "
-            f"{view.get('visible_unknown_surface_pixels', None)} | "
-            f"visible known surface = "
-            f"{view.get('visible_known_surface_pixels', None)} | "
-            f"ratio = {view.get('gain_ratio', None)} | "
+            f"angle = {view['angle_deg']:.1f} deg | "
             f"score = {view.get('score', None)}"
         )
 
@@ -99,7 +71,6 @@ def is_drone_at_target(current_position, target_position, tolerance):
     target_position = np.asarray(target_position, dtype=float)
 
     distance = np.linalg.norm(current_position - target_position)
-
     return distance <= tolerance, distance
 
 
@@ -111,7 +82,6 @@ def main():
         try:
             nbv_sock = connect_to_unity_nbv(NBV_HOST, NBV_PORT)
             print(f"Connected to Unity NBV receiver on {NBV_HOST}:{NBV_PORT}")
-
         except Exception as e:
             print(f"Could not connect to Unity NBV receiver: {e}")
             nbv_sock = None
@@ -129,7 +99,7 @@ def main():
     visited_view_ids = set()
 
     # --------------------------------------------------
-    # NBV movement state
+    # New NBV movement state
     # --------------------------------------------------
     waiting_for_nbv_move = False
     pending_nbv_position = None
@@ -144,7 +114,6 @@ def main():
     try:
         while True:
             header_data = receive_header(depth_conn)
-
             if header_data is None:
                 break
 
@@ -165,7 +134,6 @@ def main():
             ) = header_data
 
             depth = receive_depth(depth_conn, width, height)
-
             if depth is None:
                 break
 
@@ -173,12 +141,6 @@ def main():
             quaternion = (rot_x, rot_y, rot_z, rot_w)
 
             current_position_np = np.asarray(position, dtype=float)
-
-            # Use actual received image aspect ratio for NBV projection.
-            if height > 0:
-                current_aspect_ratio = float(width) / float(height)
-            else:
-                current_aspect_ratio = NBV_ASPECT_RATIO
 
             print_depth_info(
                 depth,
@@ -191,10 +153,6 @@ def main():
                 quaternion,
             )
 
-            # --------------------------------------------------
-            # Wait until Unity reaches the previously sent NBV
-            # before using the frame for reconstruction.
-            # --------------------------------------------------
             if waiting_for_nbv_move:
                 arrived, distance_to_target = is_drone_at_target(
                     current_position=current_position_np,
@@ -209,7 +167,6 @@ def main():
 
                 if arrived:
                     stable_target_frame_count += 1
-
                     print(
                         f"Drone is near target. "
                         f"Stable frame {stable_target_frame_count}/"
@@ -221,16 +178,13 @@ def main():
                         continue
 
                     print("Drone reached NBV target. Reconstruction update enabled.")
-
                     waiting_for_nbv_move = False
                     pending_nbv_position = None
                     stable_target_frame_count = 0
 
                 else:
                     stable_target_frame_count = 0
-
                     print("Drone still moving. Skipping reconstruction update.")
-
                     frame_count += 1
                     continue
 
@@ -249,7 +203,9 @@ def main():
                 continue
 
             # --------------------------------------------------
-            # Reconstruction update
+            # Reconstruction is only updated here.
+            # Because of the waiting logic above, this only happens
+            # after the drone has reached the requested NBV position.
             # --------------------------------------------------
             recon.add_view(
                 points_world=frame.filtered_points,
@@ -275,15 +231,12 @@ def main():
             # Plot occupied and unknown voxel centers
             # --------------------------------------------------
             plot_voxel_centers_3d(
-                occupied_centers=recon.occupied_centers,
-                unknown_centers=recon.unknown_centers,
-                bbox_corners=recon.bbox_corners,
-                title=f"Occupied and Unknown Voxels - View {detected_view_count}",
-            )
+                 occupied_centers=recon.occupied_centers,
+                 unknown_centers=recon.unknown_centers,
+                 bbox_corners=recon.bbox_corners,
+                 title=f"Occupied and Unknown Voxels - View {detected_view_count}",
+             )
 
-            # --------------------------------------------------
-            # Volume history
-            # --------------------------------------------------
             volume_view_numbers.append(detected_view_count)
 
             total_unknown_occupied_volume = (
@@ -312,9 +265,6 @@ def main():
                 true_volumes=true_volume_for_total_history,
             )
 
-            # --------------------------------------------------
-            # Unknown surface history from reconstruction object
-            # --------------------------------------------------
             unknown_surface_count = recon.count_unknown_surface_voxels()
 
             unknown_surface_view_numbers.append(detected_view_count)
@@ -326,7 +276,7 @@ def main():
             )
 
             # --------------------------------------------------
-            # Surface-based NBV selection
+            # NBV selection
             # --------------------------------------------------
             if (
                 USE_NBV
@@ -336,13 +286,13 @@ def main():
                 object_center = 0.5 * (recon.bbox_min + recon.bbox_max)
 
                 candidate_views = generate_candidate_views_from_bbox(
-                    bbox_min=recon.bbox_min,
-                    bbox_max=recon.bbox_max,
-                    fov_degrees=fov,
-                    num_azimuth_views=NBV_NUM_VIEWS,
-                    height_fractions=(0.2, 0.60, 1.0, 1.2),
-                    margin_factor=NBV_MARGIN_FACTOR,
-                )
+                        bbox_min=recon.bbox_min,
+                        bbox_max=recon.bbox_max,
+                        fov_degrees=fov,
+                        num_azimuth_views=8,
+                        height_fractions=(0.2, 0.60, 1.0, 1.2),
+                        margin_factor=1.2,
+                    )
 
                 if len(visited_view_ids) < len(candidate_views):
                     best_view, best_score = compute_next_best_view(
@@ -353,19 +303,8 @@ def main():
                         current_camera_position=current_position_np,
                         visited_view_ids=visited_view_ids,
                         lambda_distance=NBV_LAMBDA_DISTANCE,
-
-                        # New surface-based NBV arguments
-                        fov_degrees=fov,
-                        image_width=NBV_PROJECTION_WIDTH,
-                        image_height=NBV_PROJECTION_HEIGHT,
-                        aspect_ratio=current_aspect_ratio,
-                        voxel_size=VOXEL_SIZE,
-                        use_distance_penalty=NBV_USE_DISTANCE_PENALTY,
-
-                        # Debug rendering should usually be False now
                         save_debug_images=NBV_SAVE_DEBUG_IMAGES,
                         output_folder=NBV_OUTPUT_FOLDER,
-                        print_scores=True,
                     )
 
                     print_candidate_views(candidate_views)
@@ -380,10 +319,7 @@ def main():
                             # After sending NBV, block future reconstruction
                             # updates until Unity reports this new position.
                             # --------------------------------------------------
-                            pending_nbv_position = np.asarray(
-                                best_view["position"],
-                                dtype=float,
-                            )
+                            pending_nbv_position = np.asarray(best_view["position"], dtype=float)
 
                             waiting_for_nbv_move = True
                             stable_target_frame_count = 0

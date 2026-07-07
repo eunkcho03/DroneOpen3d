@@ -1,10 +1,7 @@
 import os
 import numpy as np
 import cv2
-#import matplotlib 
-#matplotlib.use('Agg') # Force headless rendering to prevent memory leaks
 import matplotlib.pyplot as plt
-
 
 
 # ============================================================
@@ -22,9 +19,7 @@ def normalize_vector(v, eps=1e-9):
 
 
 def rotation_matrix_to_quaternion(R):
-
     R = np.asarray(R, dtype=float)
-
     trace = np.trace(R)
 
     if trace > 0.0:
@@ -86,7 +81,6 @@ def look_at_quaternion(
 
     right = np.cross(world_up, forward)
 
-    # If camera is almost exactly above/below object, world_up becomes unstable.
     if np.linalg.norm(right) < 1e-9:
         world_up = np.array([0.0, 0.0, 1.0])
         right = np.cross(world_up, forward)
@@ -94,7 +88,6 @@ def look_at_quaternion(
     right = normalize_vector(right)
     up = normalize_vector(np.cross(forward, right))
 
-    # Columns are local x=right, y=up, z=forward
     R = np.column_stack((right, up, forward))
 
     return rotation_matrix_to_quaternion(R)
@@ -105,10 +98,6 @@ def look_at_quaternion(
 # ============================================================
 
 def _as_points_array(points):
-    """
-    Convert input points into an Nx3 float NumPy array.
-    """
-
     points = np.asarray(points, dtype=float)
 
     if points.size == 0:
@@ -128,6 +117,7 @@ def _as_points_array(points):
 # ============================================================
 # Candidate view generation
 # ============================================================
+
 def generate_candidate_views_from_bbox(
     bbox_min,
     bbox_max,
@@ -139,25 +129,6 @@ def generate_candidate_views_from_bbox(
 ):
     """
     Generate diverse candidate viewpoints around the object bounding box.
-
-    This version varies both:
-        1. azimuth angle around the object
-        2. camera height / elevation angle
-
-    Each candidate view includes:
-        - view_id
-        - angle_deg
-        - height_fraction
-        - elevation_deg
-        - position: Unity/world camera position [x, y, z]
-        - look_at: Unity/world target position [x, y, z]
-        - rotation_quat: quaternion [x, y, z, w] that faces look_at
-
-    Important:
-        position + look_at remain the single source of truth.
-        They are still usable for:
-            1. Matplotlib candidate-view gain image
-            2. Unity drone target pose
     """
 
     bbox_min = np.asarray(bbox_min, dtype=float)
@@ -166,17 +137,13 @@ def generate_candidate_views_from_bbox(
     center = 0.5 * (bbox_min + bbox_max)
     size = bbox_max - bbox_min
 
-    # Full 3D bounding-sphere radius, so height is considered too.
     object_radius = 0.5 * np.linalg.norm(size)
-
     half_fov_rad = 0.5 * np.deg2rad(fov_degrees)
 
-    # Minimum distance from camera to object center so the whole object fits.
     min_distance_to_center = (
         object_radius / np.sin(half_fov_rad)
     ) * margin_factor
 
-    # Avoid a zero horizontal radius when the camera is very high/low.
     footprint_radius = 0.5 * np.linalg.norm(size[[0, 2]])
     min_horizontal_radius = min_radius_scale * footprint_radius
 
@@ -187,11 +154,8 @@ def generate_candidate_views_from_bbox(
         cam_y = bbox_min[1] + height_fraction * size[1]
         vertical_offset = cam_y - center[1]
 
-        # Compute horizontal radius required to maintain the same 3D distance.
         horizontal_radius_sq = min_distance_to_center ** 2 - vertical_offset ** 2
         radius = np.sqrt(max(horizontal_radius_sq, 0.0))
-
-        # Safety clamp so the camera does not collapse above the object.
         radius = max(radius, min_horizontal_radius)
 
         for i in range(num_azimuth_views):
@@ -233,95 +197,362 @@ def generate_candidate_views_from_bbox(
 
     return candidate_views
 
+
 # ============================================================
-# Image-based unknown area score
+# Surface voxel extraction
 # ============================================================
 
-def compute_area_gain_from_matplotlib_figure(
-    fig,
-    orange_lower=(5, 80, 80),
-    orange_upper=(35, 255, 255),
-    blue_lower=(90, 50, 50),
-    blue_upper=(140, 255, 255),
+def estimate_voxel_size_from_points(points):
+    """
+    Estimate voxel size from voxel center coordinates.
+
+    This assumes voxel centers lie on a regular grid.
+    """
+
+    points = _as_points_array(points)
+
+    if len(points) < 2:
+        return 0.01
+
+    diffs = []
+
+    for axis in range(3):
+        vals = np.unique(np.round(points[:, axis], 8))
+        vals = np.sort(vals)
+
+        if len(vals) > 1:
+            d = np.diff(vals)
+            d = d[d > 1e-9]
+
+            if len(d) > 0:
+                diffs.append(np.min(d))
+
+    if len(diffs) == 0:
+        return 0.01
+
+    return float(np.min(diffs))
+
+
+def voxel_centers_to_grid_keys(points, voxel_size, origin=None):
+    """
+    Convert voxel center positions to integer grid keys.
+    """
+
+    points = _as_points_array(points)
+
+    if origin is None:
+        origin = points.min(axis=0) if len(points) > 0 else np.zeros(3)
+
+    keys = np.rint((points - origin) / voxel_size).astype(np.int64)
+
+    return keys, origin
+
+
+def extract_surface_voxels(points, voxel_size=None, origin=None):
+    """
+    Extract surface voxels from a voxel-center point cloud.
+
+    A voxel is considered a surface voxel if at least one of its
+    6-connected neighbors is missing.
+
+    This works for:
+        - occupied voxels
+        - unknown voxels
+
+    For unknown voxels, this gives the exposed boundary of the unknown region.
+    """
+
+    points = _as_points_array(points)
+
+    if len(points) == 0:
+        return points
+
+    if voxel_size is None:
+        voxel_size = estimate_voxel_size_from_points(points)
+
+    keys, origin = voxel_centers_to_grid_keys(
+        points=points,
+        voxel_size=voxel_size,
+        origin=origin,
+    )
+
+    key_set = set(map(tuple, keys))
+
+    neighbor_offsets = np.array([
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1],
+    ], dtype=np.int64)
+
+    surface_mask = np.zeros(len(points), dtype=bool)
+
+    for i, key in enumerate(keys):
+        for offset in neighbor_offsets:
+            neighbor_key = tuple(key + offset)
+
+            if neighbor_key not in key_set:
+                surface_mask[i] = True
+                break
+
+    return points[surface_mask]
+
+
+# ============================================================
+# Camera projection / z-buffer scoring
+# ============================================================
+
+def compute_camera_basis(
+    camera_position,
+    look_at,
+    world_up=np.array([0.0, 1.0, 0.0]),
 ):
     """
-    Compute image-based unknown-area score from a rendered Matplotlib figure.
+    Create camera basis vectors from camera position and look-at point.
 
-    Orange = unknown voxels
-    Blue = occupied / known voxels
+    Camera convention:
+        x_cam = right
+        y_cam = up
+        z_cam = forward
 
-    Returns:
-        dict with gain ratio, gain score, and pixel counts
+    Forward is positive toward the object.
     """
 
-    # Draw the current Matplotlib canvas
-    fig.canvas.draw()
+    camera_position = np.asarray(camera_position, dtype=float)
+    look_at = np.asarray(look_at, dtype=float)
+    world_up = np.asarray(world_up, dtype=float)
 
-    # Convert canvas to RGB image array
-    width, height = fig.canvas.get_width_height()
-    img_rgb = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    img_rgb = img_rgb.reshape((height, width, 3))
+    forward = normalize_vector(look_at - camera_position)
 
-    # Convert RGB to HSV for color thresholding
-    img_hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
+    if np.linalg.norm(forward) < 1e-9:
+        forward = np.array([0.0, 0.0, 1.0])
 
-    orange_lower = np.array(orange_lower, dtype=np.uint8)
-    orange_upper = np.array(orange_upper, dtype=np.uint8)
+    right = np.cross(world_up, forward)
 
-    blue_lower = np.array(blue_lower, dtype=np.uint8)
-    blue_upper = np.array(blue_upper, dtype=np.uint8)
+    if np.linalg.norm(right) < 1e-9:
+        world_up = np.array([0.0, 0.0, 1.0])
+        right = np.cross(world_up, forward)
 
-    orange_mask = cv2.inRange(img_hsv, orange_lower, orange_upper)
-    blue_mask = cv2.inRange(img_hsv, blue_lower, blue_upper)
+    right = normalize_vector(right)
+    up = normalize_vector(np.cross(forward, right))
 
-    orange_area = int(np.count_nonzero(orange_mask))
-    blue_area = int(np.count_nonzero(blue_mask))
+    return right, up, forward
 
-    total_area = orange_area + blue_area
 
-    if total_area == 0:
+def world_points_to_camera(points, camera_position, look_at):
+    """
+    Transform world points into candidate camera coordinates.
+    """
+
+    points = _as_points_array(points)
+    camera_position = np.asarray(camera_position, dtype=float)
+
+    right, up, forward = compute_camera_basis(
+        camera_position=camera_position,
+        look_at=look_at,
+    )
+
+    rel = points - camera_position
+
+    x_cam = rel @ right
+    y_cam = rel @ up
+    z_cam = rel @ forward
+
+    return np.column_stack((x_cam, y_cam, z_cam))
+
+
+def project_points_to_image(
+    points,
+    camera_position,
+    look_at,
+    fov_degrees=58.0,
+    image_width=160,
+    image_height=160,
+    aspect_ratio=16.0 / 9.0,
+    near=1e-6,
+):
+    """
+    Project world points into a simple pinhole candidate camera.
+
+    Returns:
+        pixel_u, pixel_v, depth_z, valid_mask
+    """
+
+    points = _as_points_array(points)
+
+    if len(points) == 0:
+        return (
+            np.empty(0, dtype=np.int64),
+            np.empty(0, dtype=np.int64),
+            np.empty(0, dtype=float),
+            np.empty(0, dtype=bool),
+        )
+
+    cam = world_points_to_camera(
+        points=points,
+        camera_position=camera_position,
+        look_at=look_at,
+    )
+
+    x = cam[:, 0]
+    y = cam[:, 1]
+    z = cam[:, 2]
+
+    vertical_half_fov = 0.5 * np.deg2rad(fov_degrees)
+    horizontal_half_fov = np.arctan(np.tan(vertical_half_fov) * aspect_ratio)
+
+    valid = (
+        (z > near)
+        & (np.abs(x / z) <= np.tan(horizontal_half_fov))
+        & (np.abs(y / z) <= np.tan(vertical_half_fov))
+    )
+
+    u = np.empty(len(points), dtype=np.int64)
+    v = np.empty(len(points), dtype=np.int64)
+
+    u[:] = -1
+    v[:] = -1
+
+    if np.any(valid):
+        x_norm = (x[valid] / z[valid]) / np.tan(horizontal_half_fov)
+        y_norm = (y[valid] / z[valid]) / np.tan(vertical_half_fov)
+
+        u_valid = ((x_norm + 1.0) * 0.5 * (image_width - 1)).astype(np.int64)
+        v_valid = ((1.0 - (y_norm + 1.0) * 0.5) * (image_height - 1)).astype(np.int64)
+
+        u_valid = np.clip(u_valid, 0, image_width - 1)
+        v_valid = np.clip(v_valid, 0, image_height - 1)
+
+        u[valid] = u_valid
+        v[valid] = v_valid
+
+    return u, v, z, valid
+
+
+def compute_surface_projection_gain(
+    occupied_surface_voxels,
+    unknown_surface_voxels,
+    camera_position,
+    look_at,
+    fov_degrees=58.0,
+    image_width=160,
+    image_height=160,
+    aspect_ratio=16.0 / 9.0,
+):
+    """
+    Compute NBV gain using visible surface voxels only.
+
+    Unknown surface voxels and occupied surface voxels are projected into
+    the candidate camera image. A z-buffer keeps only the nearest surface
+    voxel per projected pixel.
+
+    Score:
+        visible_unknown_area * gain_ratio
+
+    where:
+        gain_ratio = visible_unknown_area / visible_total_surface_area
+    """
+
+    occupied_surface_voxels = _as_points_array(occupied_surface_voxels)
+    unknown_surface_voxels = _as_points_array(unknown_surface_voxels)
+
+    if len(occupied_surface_voxels) == 0 and len(unknown_surface_voxels) == 0:
+        return {
+            "gain_ratio": 0.0,
+            "gain_score": 0.0,
+            "visible_unknown_surface_pixels": 0,
+            "visible_known_surface_pixels": 0,
+            "visible_total_surface_pixels": 0,
+            "unknown_surface_in_fov": 0,
+            "known_surface_in_fov": 0,
+        }
+
+    all_points = []
+    labels = []
+
+    if len(occupied_surface_voxels) > 0:
+        all_points.append(occupied_surface_voxels)
+        labels.append(np.zeros(len(occupied_surface_voxels), dtype=np.int8))
+
+    if len(unknown_surface_voxels) > 0:
+        all_points.append(unknown_surface_voxels)
+        labels.append(np.ones(len(unknown_surface_voxels), dtype=np.int8))
+
+    all_points = np.vstack(all_points)
+    labels = np.concatenate(labels)
+
+    u, v, z, valid = project_points_to_image(
+        points=all_points,
+        camera_position=camera_position,
+        look_at=look_at,
+        fov_degrees=fov_degrees,
+        image_width=image_width,
+        image_height=image_height,
+        aspect_ratio=aspect_ratio,
+    )
+
+    if not np.any(valid):
+        return {
+            "gain_ratio": 0.0,
+            "gain_score": 0.0,
+            "visible_unknown_surface_pixels": 0,
+            "visible_known_surface_pixels": 0,
+            "visible_total_surface_pixels": 0,
+            "unknown_surface_in_fov": 0,
+            "known_surface_in_fov": 0,
+        }
+
+    u_valid = u[valid]
+    v_valid = v[valid]
+    z_valid = z[valid]
+    labels_valid = labels[valid]
+
+    unknown_surface_in_fov = int(np.count_nonzero(labels_valid == 1))
+    known_surface_in_fov = int(np.count_nonzero(labels_valid == 0))
+
+    pixel_index = v_valid * image_width + u_valid
+
+    # Sort by pixel first, then depth.
+    # For each pixel, the first entry is the closest surface voxel.
+    order = np.lexsort((z_valid, pixel_index))
+
+    pixel_sorted = pixel_index[order]
+    labels_sorted = labels_valid[order]
+
+    first_mask = np.ones(len(pixel_sorted), dtype=bool)
+    first_mask[1:] = pixel_sorted[1:] != pixel_sorted[:-1]
+
+    visible_labels = labels_sorted[first_mask]
+
+    visible_unknown = int(np.count_nonzero(visible_labels == 1))
+    visible_known = int(np.count_nonzero(visible_labels == 0))
+    visible_total = visible_unknown + visible_known
+
+    if visible_total == 0:
         gain_ratio = 0.0
     else:
-        gain_ratio = orange_area / total_area
+        gain_ratio = visible_unknown / visible_total
 
-    # NBV-like image score:
-    # high if the image contains a lot of unknown area,
-    # and the unknown area is large compared with known area.
-    gain_score = orange_area * gain_ratio
+    gain_score = visible_unknown * gain_ratio
 
     return {
-        "gain_ratio": gain_ratio,
-        "gain_score": gain_score,
-        "unknown_area_pixels": orange_area,
-        "known_area_pixels": blue_area,
-        "total_area_pixels": total_area,
+        "gain_ratio": float(gain_ratio),
+        "gain_score": float(gain_score),
+        "visible_unknown_surface_pixels": visible_unknown,
+        "visible_known_surface_pixels": visible_known,
+        "visible_total_surface_pixels": visible_total,
+        "unknown_surface_in_fov": unknown_surface_in_fov,
+        "known_surface_in_fov": known_surface_in_fov,
     }
 
 
 # ============================================================
-# Helper for Matplotlib camera angle
+# Matplotlib debug rendering
 # ============================================================
 
 def compute_matplotlib_view_angles(camera_position, look_at):
-    """
-    Convert a Unity/world camera pose into Matplotlib view angles.
-
-    World convention:
-        x = world X
-        y = world Y / height
-        z = world Z
-
-    Plot convention used here:
-        plot x-axis = world X
-        plot y-axis = world Z
-        plot z-axis = world Y / height
-
-    Important:
-        This does not create a separate camera pose.
-        It converts the same position + look_at used for Unity into
-        Matplotlib elev/azim angles for the candidate-view image.
-    """
-
     camera_position = np.asarray(camera_position, dtype=float)
     look_at = np.asarray(look_at, dtype=float)
 
@@ -340,21 +571,6 @@ def compute_matplotlib_view_angles(camera_position, look_at):
 
 
 def compute_equal_axis_limits(points, zoom_margin=0.08):
-    """
-    Compute equal-length axis limits around the voxel block.
-
-    Input points are in world coordinates:
-        [x, y, z]
-
-    Returned limits are also in world-coordinate order:
-        x_lim, y_lim, z_lim
-
-    The plotting function will apply them according to:
-        plot x = world x
-        plot y = world z
-        plot z = world y
-    """
-
     points = _as_points_array(points)
 
     if len(points) == 0:
@@ -379,6 +595,7 @@ def compute_equal_axis_limits(points, zoom_margin=0.08):
 
     return x_lim, y_lim, z_lim
 
+
 def render_candidate_view_figure(
     occupied_voxels,
     unknown_voxels,
@@ -393,24 +610,9 @@ def render_candidate_view_figure(
     show_camera_triangle=True,
 ):
     """
-    Render occupied and unknown voxels from one candidate camera view.
+    Debug renderer only.
 
-    Blue = occupied / known voxels
-    Orange = unknown voxels
-
-    Also shows the candidate camera position as a black triangle
-    and a dashed line from the camera to the look_at point.
-
-    Uses the same candidate pose that should be sent to Unity:
-        - camera_position
-        - look_at
-
-    The figure uses equal scale for x, y, and z axes.
-
-    If save_path is provided, the rendered image is saved.
-
-    Returns:
-        fig, ax
+    This should not be used for NBV scoring anymore.
     """
 
     occupied_voxels = _as_points_array(occupied_voxels)
@@ -440,7 +642,6 @@ def render_candidate_view_figure(
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection="3d")
 
-
     if len(occupied_voxels) > 0:
         ax.scatter(
             occupied_voxels[:, 0],
@@ -463,17 +664,15 @@ def render_candidate_view_figure(
             depthshade=False,
         )
 
-
     if show_camera_triangle:
         cam_x = camera_position[0]
-        cam_y_plot = camera_position[2]   # world Z -> plot Y
-        cam_z_plot = camera_position[1]   # world Y -> plot Z
+        cam_y_plot = camera_position[2]
+        cam_z_plot = camera_position[1]
 
         look_x = look_at[0]
-        look_y_plot = look_at[2]          # world Z -> plot Y
-        look_z_plot = look_at[1]          # world Y -> plot Z
+        look_y_plot = look_at[2]
+        look_z_plot = look_at[1]
 
-        # Camera candidate position as triangle
         ax.scatter(
             cam_x,
             cam_y_plot,
@@ -484,7 +683,6 @@ def render_candidate_view_figure(
             depthshade=False,
         )
 
-        # Dashed viewing direction line
         ax.plot(
             [cam_x, look_x],
             [cam_y_plot, look_y_plot],
@@ -494,20 +692,11 @@ def render_candidate_view_figure(
             linewidth=1.5,
         )
 
-    # Apply equal-length limits.
-    # Remember:
-    #   Matplotlib x-axis = world x
-    #   Matplotlib y-axis = world z
-    #   Matplotlib z-axis = world y
     ax.set_xlim(x_lim)
     ax.set_ylim(z_lim)
     ax.set_zlim(y_lim)
 
-    # Force equal visual scale on all 3 axes.
     ax.set_box_aspect((1, 1, 1))
-
-    # Use the view angle derived from the same position + look_at
-    # that will be sent to Unity.
     ax.view_init(elev=elev_deg, azim=azim_deg)
 
     ax.set_axis_off()
@@ -530,15 +719,74 @@ def render_candidate_view_figure(
 
 
 # ============================================================
-# NBV using image-based unknown score only
+# NBV using surface voxels
 # ============================================================
+
 def compute_next_best_view(
-    occupied_voxels, unknown_voxels, object_center, candidate_views,
-    current_camera_position=None, visited_view_ids=None,
-    lambda_distance=1.0, save_debug_images=False, output_folder="potential_views"
+    occupied_voxels,
+    unknown_voxels,
+    object_center,
+    candidate_views,
+    current_camera_position=None,
+    visited_view_ids=None,
+    lambda_distance=1.0,
+    save_debug_images=False,
+    output_folder="potential_views",
+    fov_degrees=58.0,
+    image_width=160,
+    image_height=160,
+    aspect_ratio=16.0 / 9.0,
+    voxel_size=None,
+    use_distance_penalty=False,
+    print_scores=True,
 ):
-    if occupied_voxels is None: occupied_voxels = np.empty((0, 3))
-    if unknown_voxels is None: unknown_voxels = np.empty((0, 3))
+    """
+    Compute next best view using visible surface voxels.
+
+    This version does NOT render Matplotlib figures to compute the score.
+    It uses direct projection + z-buffering.
+
+    Score:
+        visible_unknown_surface_pixels * gain_ratio
+
+    where:
+        gain_ratio =
+            visible_unknown_surface_pixels /
+            visible_total_surface_pixels
+
+    Parameters:
+        occupied_voxels:
+            Known/occupied voxel centers.
+
+        unknown_voxels:
+            Unknown voxel centers.
+
+        object_center:
+            Object center.
+
+        candidate_views:
+            Views from generate_candidate_views_from_bbox().
+
+        fov_degrees:
+            Candidate camera vertical FOV.
+
+        image_width, image_height:
+            Low-resolution virtual image used for projected surface area.
+            160x160 is usually enough and much faster than Matplotlib.
+
+        voxel_size:
+            Optional. If None, estimated from voxel centers.
+
+        use_distance_penalty:
+            If True, score is divided by:
+                1 + lambda_distance * travel_distance
+    """
+
+    if occupied_voxels is None:
+        occupied_voxels = np.empty((0, 3))
+
+    if unknown_voxels is None:
+        unknown_voxels = np.empty((0, 3))
 
     occupied_voxels = _as_points_array(occupied_voxels)
     unknown_voxels = _as_points_array(unknown_voxels)
@@ -547,8 +795,10 @@ def compute_next_best_view(
     if current_camera_position is not None:
         current_camera_position = np.asarray(current_camera_position, dtype=float)
 
-    if visited_view_ids is None: visited_view_ids = set()
-    else: visited_view_ids = set(visited_view_ids)
+    if visited_view_ids is None:
+        visited_view_ids = set()
+    else:
+        visited_view_ids = set(visited_view_ids)
 
     if len(unknown_voxels) == 0:
         print("No unknown voxels left. NBV not needed.")
@@ -558,17 +808,83 @@ def compute_next_best_view(
         print("No candidate views available.")
         return None, 0.0
 
+    # Estimate voxel size once.
+    if voxel_size is None:
+        if len(occupied_voxels) > 0 and len(unknown_voxels) > 0:
+            voxel_size = estimate_voxel_size_from_points(
+                np.vstack([occupied_voxels, unknown_voxels])
+            )
+        elif len(unknown_voxels) > 0:
+            voxel_size = estimate_voxel_size_from_points(unknown_voxels)
+        else:
+            voxel_size = estimate_voxel_size_from_points(occupied_voxels)
+
+    # Use shared origin so occupied and unknown voxel grids align.
+    if len(occupied_voxels) > 0 and len(unknown_voxels) > 0:
+        grid_origin = np.vstack([occupied_voxels, unknown_voxels]).min(axis=0)
+    elif len(unknown_voxels) > 0:
+        grid_origin = unknown_voxels.min(axis=0)
+    elif len(occupied_voxels) > 0:
+        grid_origin = occupied_voxels.min(axis=0)
+    else:
+        grid_origin = np.zeros(3)
+
+    # Extract only surface voxels.
+    occupied_surface_voxels = extract_surface_voxels(
+        occupied_voxels,
+        voxel_size=voxel_size,
+        origin=grid_origin,
+    )
+
+    unknown_surface_voxels = extract_surface_voxels(
+        unknown_voxels,
+        voxel_size=voxel_size,
+        origin=grid_origin,
+    )
+
+    if len(unknown_surface_voxels) == 0:
+        print("No unknown surface voxels left. NBV not needed.")
+        return None, 0.0
+
     if save_debug_images:
         os.makedirs(output_folder, exist_ok=True)
 
+    print("")
+    print("====================================================")
+    print("Surface-based NBV")
+    print(f"Voxel size used: {voxel_size}")
+    print(f"Occupied voxels: {len(occupied_voxels)}")
+    print(f"Unknown voxels: {len(unknown_voxels)}")
+    print(f"Occupied surface voxels: {len(occupied_surface_voxels)}")
+    print(f"Unknown surface voxels: {len(unknown_surface_voxels)}")
+    print("====================================================")
+
     best_view = None
     best_score = -np.inf
+
+    if print_scores:
+        print("")
+        print("--- Candidate Views: Surface-Based Gain ---")
 
     for view in candidate_views:
         view_id = view["view_id"]
 
         if view_id in visited_view_ids:
-            view.update({"gain_ratio": 0.0, "gain_score_raw": 0.0, "unknown_area_pixels": 0, "known_area_pixels": 0, "total_area_pixels": 0, "distance": np.inf, "score": -np.inf})
+            view.update({
+                "gain_ratio": 0.0,
+                "gain_score_raw": 0.0,
+                "visible_unknown_surface_pixels": 0,
+                "visible_known_surface_pixels": 0,
+                "visible_total_surface_pixels": 0,
+                "unknown_surface_in_fov": 0,
+                "known_surface_in_fov": 0,
+                "distance": np.inf,
+                "score": -np.inf,
+            })
+
+            if print_scores:
+                print(f"View {view_id:02d} | visited | score = -inf")
+
             continue
 
         camera_position = np.asarray(view["position"], dtype=float)
@@ -576,33 +892,84 @@ def compute_next_best_view(
 
         view["position"] = camera_position
         view["look_at"] = look_at
-        view["rotation_quat"] = look_at_quaternion(camera_position=camera_position, target_position=look_at)
-
-        fig, ax = render_candidate_view_figure(
-            occupied_voxels=occupied_voxels, unknown_voxels=unknown_voxels,
-            camera_position=camera_position, look_at=look_at,
-            zoom_margin=0.08, figsize=(6, 6), marker_size=2,
+        view["rotation_quat"] = look_at_quaternion(
+            camera_position=camera_position,
+            target_position=look_at,
         )
 
-        area_result = compute_area_gain_from_matplotlib_figure(fig)
-        raw_gain_score = float(area_result["gain_score"])
-        gain_ratio = float(area_result["gain_ratio"])
-        unknown_area = int(area_result["unknown_area_pixels"])
-        known_area = int(area_result["known_area_pixels"])
-        total_area = int(area_result["total_area_pixels"])
+        gain_result = compute_surface_projection_gain(
+            occupied_surface_voxels=occupied_surface_voxels,
+            unknown_surface_voxels=unknown_surface_voxels,
+            camera_position=camera_position,
+            look_at=look_at,
+            fov_degrees=fov_degrees,
+            image_width=image_width,
+            image_height=image_height,
+            aspect_ratio=aspect_ratio,
+        )
 
-        travel_distance = 0.0 if current_camera_position is None else float(np.linalg.norm(camera_position - current_camera_position))
-        score = raw_gain_score 
-        #score = gain_ratio / (1.0 + lambda_distance * travel_distance)
-        view.update({"gain_ratio": gain_ratio, "gain_score_raw": raw_gain_score, "unknown_area_pixels": unknown_area, "known_area_pixels": known_area, "total_area_pixels": total_area, "distance": travel_distance, "score": score})
+        raw_gain_score = float(gain_result["gain_score"])
+        gain_ratio = float(gain_result["gain_ratio"])
+
+        visible_unknown = int(gain_result["visible_unknown_surface_pixels"])
+        visible_known = int(gain_result["visible_known_surface_pixels"])
+        visible_total = int(gain_result["visible_total_surface_pixels"])
+
+        unknown_in_fov = int(gain_result["unknown_surface_in_fov"])
+        known_in_fov = int(gain_result["known_surface_in_fov"])
+
+        if current_camera_position is None:
+            travel_distance = 0.0
+        else:
+            travel_distance = float(np.linalg.norm(camera_position - current_camera_position))
+
+        if use_distance_penalty:
+            score = raw_gain_score / (1.0 + lambda_distance * travel_distance)
+        else:
+            score = raw_gain_score
+
+        view.update({
+            "gain_ratio": gain_ratio,
+            "gain_score_raw": raw_gain_score,
+            "visible_unknown_surface_pixels": visible_unknown,
+            "visible_known_surface_pixels": visible_known,
+            "visible_total_surface_pixels": visible_total,
+            "unknown_surface_in_fov": unknown_in_fov,
+            "known_surface_in_fov": known_in_fov,
+            "distance": travel_distance,
+            "score": score,
+        })
+
+        if print_scores:
+            print(
+                f"View {view_id:02d} | "
+                f"angle = {view.get('angle_deg', 0.0):.1f} deg | "
+                f"height_frac = {view.get('height_fraction', -1):.2f} | "
+                f"visible unknown surface = {visible_unknown} | "
+                f"visible known surface = {visible_known} | "
+                f"ratio = {gain_ratio:.3f} | "
+                f"score = {score:.4f}"
+            )
 
         if save_debug_images:
-            filepath = os.path.join(output_folder, f"candidate_{view_id:02d}_unknown_{unknown_area}_ratio_{gain_ratio:.3f}_score_{score:.4f}.png")
-            fig.savefig(filepath, dpi=150, bbox_inches="tight", pad_inches=0)
+            filepath = os.path.join(
+                output_folder,
+                f"candidate_{view_id:02d}_surface_unknown_{visible_unknown}_ratio_{gain_ratio:.3f}_score_{score:.4f}.png"
+            )
 
-        # Clear figure explicitly to free memory
-        fig.clf()
-        plt.close(fig)
+            fig, ax = render_candidate_view_figure(
+                occupied_voxels=occupied_surface_voxels,
+                unknown_voxels=unknown_surface_voxels,
+                camera_position=camera_position,
+                look_at=look_at,
+                zoom_margin=0.08,
+                figsize=(6, 6),
+                marker_size=2,
+                save_path=filepath,
+                dpi=150,
+                close_after_save=True,
+                show_camera_triangle=True,
+            )
 
         if score > best_score:
             best_score = score
@@ -610,5 +977,18 @@ def compute_next_best_view(
 
     if best_view is None:
         return None, 0.0
+
+    print("")
+    print("====================================================")
+    print("Selected NBV")
+    print(f"View ID: {best_view['view_id']}")
+    print(f"Angle: {best_view.get('angle_deg', 0.0):.1f} deg")
+    print(f"Height fraction: {best_view.get('height_fraction', -1):.2f}")
+    print(f"Visible unknown surface pixels: {best_view['visible_unknown_surface_pixels']}")
+    print(f"Visible known surface pixels: {best_view['visible_known_surface_pixels']}")
+    print(f"Gain ratio: {best_view['gain_ratio']:.3f}")
+    print(f"Best score: {best_score:.4f}")
+    print("====================================================")
+    print("")
 
     return best_view, best_score
