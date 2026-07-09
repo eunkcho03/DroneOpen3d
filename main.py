@@ -34,7 +34,7 @@ NBV_PORT = 9020
 
 FLOOR_HEIGHT = 0.0
 OBJECT_HEIGHT_THRESHOLD = 1e-3
-VOXEL_SIZE = 0.0025
+VOXEL_SIZE = 0.0001
 BBOX_MARGIN = 0.05
 
 CARVE_MARGIN = 0
@@ -44,28 +44,16 @@ USE_NBV = True
 NBV_NUM_VIEWS = 8
 NBV_MARGIN_FACTOR = 1.2
 NBV_LAMBDA_DISTANCE = 1.5
-
-# --------------------------------------------------
-# Surface-based NBV settings
-# --------------------------------------------------
-# Important:
-# The new NBV score does NOT need Matplotlib rendering.
-# Keep this False for speed.
 NBV_SAVE_DEBUG_IMAGES = False
 
-NBV_OUTPUT_FOLDER = "potential_views"
+NBV_OUTPUT_FOLDER = "potential_views_debug"
 
-# Low-resolution virtual camera used for projected surface-area scoring.
-# Larger = more detailed but slower.
 NBV_PROJECTION_WIDTH = 160
 NBV_PROJECTION_HEIGHT = 160
 
-# Unity camera is usually 16:9 for 1280x720.
-# If your received depth image is not 16:9, this is overwritten each frame.
+
 NBV_ASPECT_RATIO = 16.0 / 9.0
 
-# If True, penalizes views that require longer travel distance.
-# For now, I recommend False while debugging NBV behavior.
 NBV_USE_DISTANCE_PENALTY = False
 
 SEND_NBV_TO_UNITY = True
@@ -376,10 +364,6 @@ def main():
                         if SEND_NBV_TO_UNITY and nbv_sock is not None:
                             send_next_view(nbv_sock, best_view, best_score)
 
-                            # --------------------------------------------------
-                            # After sending NBV, block future reconstruction
-                            # updates until Unity reports this new position.
-                            # --------------------------------------------------
                             pending_nbv_position = np.asarray(
                                 best_view["position"],
                                 dtype=float,
