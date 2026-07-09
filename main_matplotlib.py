@@ -22,7 +22,7 @@ from functions_compute import (
     ExtrusionFusionReconstruction,
 )
 
-from nbv_functions import (
+from backup.nbv_functions import (
     generate_candidate_views_from_bbox,
     compute_next_best_view,
 )
