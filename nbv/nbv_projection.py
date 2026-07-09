@@ -1,6 +1,6 @@
 import numpy as np
 
-from nbv_utils import as_points_array, normalize_vector
+from nbv.nbv_utils import as_points_array, normalize_vector
 
 
 def compute_camera_basis(

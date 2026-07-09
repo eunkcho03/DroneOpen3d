@@ -1,6 +1,6 @@
 import numpy as np
 
-from nbv_utils import look_at_quaternion
+from nbv.nbv_utils import look_at_quaternion
 
 
 def generate_candidate_views_from_bbox(

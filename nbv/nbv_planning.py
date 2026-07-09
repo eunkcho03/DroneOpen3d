@@ -1,10 +1,10 @@
 import os
 import numpy as np
 
-from nbv_utils import as_points_array, look_at_quaternion
-from nbv_surface import estimate_voxel_size_from_points, extract_surface_voxels
-from nbv_projection import compute_surface_projection_gain
-from nbv_debug_rendering import render_candidate_view_figure
+from nbv.nbv_utils import as_points_array, look_at_quaternion
+from nbv.nbv_surface import estimate_voxel_size_from_points, extract_surface_voxels
+from nbv.nbv_projection import compute_surface_projection_gain
+from nbv.nbv_debug_rendering import render_candidate_view_figure
 
 
 def compute_next_best_view(

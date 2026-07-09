@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from backup.nbv_functions import compute_next_best_view
 from functions_print import (
     plot_voxel_centers_3d,
     print_depth_info,
@@ -22,10 +23,9 @@ from functions_compute import (
     ExtrusionFusionReconstruction,
 )
 
-from backup.nbv_functions import (
-    generate_candidate_views_from_bbox,
-    compute_next_best_view,
-)
+from nbv.nbv_candidate_generation import generate_candidate_views_from_bbox
+from nbv.nbv_planning import compute_next_best_view
+
 
 HOST = "127.0.0.1"
 DEPTH_PORT = 9010
@@ -34,7 +34,7 @@ NBV_PORT = 9020
 
 FLOOR_HEIGHT = 0.0
 OBJECT_HEIGHT_THRESHOLD = 1e-3
-VOXEL_SIZE = 0.0001
+VOXEL_SIZE = 0.0025
 BBOX_MARGIN = 0.05
 
 CARVE_MARGIN = 0

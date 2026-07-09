@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from nbv_utils import as_points_array
+from nbv.nbv_utils import as_points_array
 
 
 def compute_matplotlib_view_angles(camera_position, look_at):

@@ -232,6 +232,7 @@ class ExtrusionFusionReconstruction:
                 self._log("Skipping initialization: no valid object points.")
                 return self
             self._initialize_bbox_from_detection(points_world)
+            
 
         if self._has_camera_data(depth, fov_degrees, far, position, quaternion):
             self.carve_with_depth_image(
@@ -420,6 +421,19 @@ class ExtrusionFusionReconstruction:
 
     def _initialize_bbox_from_detection(self, points_world):
         self.bbox_min, self.bbox_max, self.bbox_corners = self._compute_bbox(points_world)
+        
+        bbox_size = self.bbox_max - self.bbox_min
+        bbox_volume = np.prod(bbox_size)
+
+        self._log(
+            f"Initial bbox | "
+            f"min: {self.bbox_min} | "
+            f"max: {self.bbox_max} | "
+            f"size: {bbox_size} m | "
+            f"volume: {bbox_volume:.6f} m³ | "
+            f"voxel size: {self.voxel_size} m"
+        )
+    
         self.grid_shape = self._compute_grid_shape()
 
         # Fill whole bbox as UNKNOWN with one dense array allocation.

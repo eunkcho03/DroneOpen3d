@@ -1,6 +1,6 @@
 import numpy as np
 
-from nbv_utils import as_points_array
+from nbv.nbv_utils import as_points_array
 
 
 def estimate_voxel_size_from_points(points):
