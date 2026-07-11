@@ -1,12 +1,15 @@
-import matplotlib.pyplot as plt
 import numpy as np
-
+import os
 from backup.nbv_functions import compute_next_best_view
 from functions_print import (
     plot_voxel_centers_3d,
     print_depth_info,
     plot_unknown_surface_voxel_history,
     plot_total_unknown_occupied_vs_true_volume,
+    plot_cum_nbv_gain_distance_history_one,
+    plot_cum_nbv_gain_distance_history_sbs,
+    save_nbv_history_to_excel,
+    save_volume_history_to_excel,
 )
 
 from functions_connect import (
@@ -41,30 +44,24 @@ CARVE_WITH_INVALID_DEPTH = True
 
 USE_NBV = True
 NBV_NUM_VIEWS = 8
-NBV_INFLATION_FACTOR = 1.2
-NBV_MARGIN_FACTOR = NBV_INFLATION_FACTOR * 1.2
-NBV_LAMBDA_DISTANCE = 1.5
+NBV_INFLATION_FACTOR = 1.5
+NBV_MARGIN_FACTOR = 1.2
+NBV_LAMBDA_DISTANCE = 5.0
 NBV_SAVE_DEBUG_IMAGES = False
-
 NBV_OUTPUT_FOLDER = "potential_views_debug"
-
 NBV_PROJECTION_WIDTH = 160
 NBV_PROJECTION_HEIGHT = 160
-
-
 NBV_ASPECT_RATIO = 16.0 / 9.0
-
-NBV_USE_DISTANCE_PENALTY = False
-
-SEND_NBV_TO_UNITY = True
-PLOT_PATH = True  
-
-# --------------------------------------------------
-# Movement gating settings
-# --------------------------------------------------
+NBV_USE_DISTANCE_PENALTY = True
 NBV_POSITION_TOLERANCE = 0.03
 NBV_STABLE_FRAMES_REQUIRED = 1
 
+SEND_NBV_TO_UNITY = True
+PLOT_PATH = False  
+PLOT_VOXEL_CENTERS = False
+
+SAVE_HISTORY_TO_EXCEL = True
+PLOT_HISTORY = True
 
 
 def is_drone_at_target(current_position, target_position, tolerance):
@@ -91,13 +88,12 @@ def main():
 
     frame_count = 0
     detected_view_count = 0
-
-    unknown_surface_view_numbers = []
     unknown_surface_counts = []
-
-    volume_view_numbers = []
+    volume_view_numbers = [0]
     total_unknown_occupied_volume_history = []
     true_volume_for_total_history = []
+    nbv_distance = [0]
+    nbv_gain = [0]
 
     visited_view_ids = set()
 
@@ -247,17 +243,20 @@ def main():
             # --------------------------------------------------
             # Plot occupied and unknown voxel centers
             # --------------------------------------------------
-            plot_voxel_centers_3d(
-                occupied_centers=recon.occupied_centers,
-                unknown_centers=recon.unknown_centers,
-                bbox_corners=recon.bbox_corners,
-                title=f"Occupied and Unknown Voxels - View {detected_view_count}",
-            )
+            if PLOT_VOXEL_CENTERS:
+                plot_voxel_centers_3d(
+                    occupied_centers=recon.occupied_centers,
+                    unknown_centers=recon.unknown_centers,
+                    bbox_corners=recon.bbox_corners,
+                    title=f"Occupied and Unknown Voxels - View {detected_view_count}",
+                )
 
             # --------------------------------------------------
             # Volume history
             # --------------------------------------------------
             volume_view_numbers.append(detected_view_count)
+            #print('volume_view_numbers:', volume_view_numbers)
+            #print('volume_view_numbers[1:]:', volume_view_numbers[1:])
 
             total_unknown_occupied_volume = (
                 recon.occupied_volume + recon.unknown_volume
@@ -271,32 +270,21 @@ def main():
                 f"true Unity volume: {true_volume:.6f} m³"
             )
 
-            total_unknown_occupied_volume_history.append(
-                total_unknown_occupied_volume
-            )
-
-            true_volume_for_total_history.append(
-                true_volume if true_volume >= 0 else np.nan
-            )
-
-            plot_total_unknown_occupied_vs_true_volume(
-                view_numbers=volume_view_numbers,
-                total_unknown_occupied_volumes=total_unknown_occupied_volume_history,
-                true_volumes=true_volume_for_total_history,
-            )
-
-            # --------------------------------------------------
-            # Unknown surface history from reconstruction object
-            # --------------------------------------------------
+            total_unknown_occupied_volume_history.append(total_unknown_occupied_volume)
+            true_volume_for_total_history.append(true_volume)
             unknown_surface_count = recon.count_unknown_surface_voxels()
-
-            unknown_surface_view_numbers.append(detected_view_count)
             unknown_surface_counts.append(unknown_surface_count)
 
-            plot_unknown_surface_voxel_history(
-                view_numbers=unknown_surface_view_numbers,
-                unknown_surface_counts=unknown_surface_counts,
-            )
+            if PLOT_HISTORY:
+                plot_total_unknown_occupied_vs_true_volume(
+                    view_numbers=volume_view_numbers[1:],
+                    total_unknown_occupied_volumes=total_unknown_occupied_volume_history,
+                    true_volumes=true_volume_for_total_history,
+                )
+                plot_unknown_surface_voxel_history(
+                    view_numbers=volume_view_numbers[1:],
+                    unknown_surface_counts=unknown_surface_counts,
+                )
 
             # --------------------------------------------------
             # Surface-based NBV selection
@@ -318,7 +306,7 @@ def main():
                 )
 
                 if len(visited_view_ids) < len(candidate_views):
-                    best_view, best_score = compute_next_best_view(
+                    best_view, best_score, distance, gain = compute_next_best_view(
                         occupied_voxels=recon.occupied_centers,
                         unknown_voxels=recon.unknown_centers,
                         object_center=object_center,
@@ -347,6 +335,36 @@ def main():
                         
                         plot_path=PLOT_PATH,  # Set to True to visualize the path
                     )
+                    
+                    nbv_distance.append(distance)
+                    nbv_gain.append(gain)
+                    if PLOT_HISTORY:
+                        plot_cum_nbv_gain_distance_history_one(
+                            view_numbers=volume_view_numbers,
+                            nbv_gains=nbv_gain,
+                            nbv_distances=nbv_distance,
+                        )
+                        plot_cum_nbv_gain_distance_history_sbs(
+                            view_numbers=volume_view_numbers,
+                            nbv_gains=nbv_gain,
+                            nbv_distances=nbv_distance,
+                        )
+
+                    if SAVE_HISTORY_TO_EXCEL:
+                        os.makedirs('history', exist_ok=True)
+                        save_nbv_history_to_excel(
+                            view_numbers=volume_view_numbers,
+                            nbv_gains=nbv_gain,
+                            nbv_distances=nbv_distance,
+                            output_file_path= f"history/nbv_history_DPEN_{NBV_USE_DISTANCE_PENALTY}.xlsx",
+                        )
+                        
+                        save_volume_history_to_excel(
+                            view_numbers=volume_view_numbers[1:],
+                            total_unknown_occupied_volumes=total_unknown_occupied_volume_history,
+                            true_volumes=true_volume_for_total_history,
+                            output_file_path=f"history/volume_history_DPEN_{NBV_USE_DISTANCE_PENALTY}.xlsx",
+                        )
 
 
                     if best_view is not None:

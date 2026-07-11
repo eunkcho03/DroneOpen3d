@@ -232,9 +232,10 @@ def compute_next_best_view(
         if score > best_score:
             best_score = score
             best_view = view
-
-    if best_view is None:
-        return None, 0.0
+            distance = travel_distance
+            gain = raw_gain_score
+            path_to_best_view = path
+            
 
     print("")
     print("====================================================")
@@ -246,7 +247,8 @@ def compute_next_best_view(
     print(f"Visible known surface pixels: {best_view['visible_known_surface_pixels']}")
     print(f"Gain ratio: {best_view['gain_ratio']:.3f}")
     print(f"Best score: {best_score:.4f}")
+    print(f"Distance to NBV: {distance:.2f} m")
     print("====================================================")
     print("")
 
-    return best_view, best_score
+    return best_view, best_score, distance, gain

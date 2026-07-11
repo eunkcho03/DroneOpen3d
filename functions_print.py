@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from functions_compute import make_valid_depth_mask
 
@@ -169,8 +170,6 @@ def plot_voxel_centers_3d(
 
 
 def plot_unknown_surface_voxel_history(view_numbers, unknown_surface_counts):
-    if len(view_numbers) == 0 or len(unknown_surface_counts) == 0:
-        return
     plt.figure(figsize=(7, 4))
     plt.plot(view_numbers, unknown_surface_counts, marker="o", linewidth=2)
     plt.title("Unknown Surface Voxels After Each View")
@@ -182,18 +181,16 @@ def plot_unknown_surface_voxel_history(view_numbers, unknown_surface_counts):
     
 
 def plot_total_unknown_occupied_vs_true_volume(view_numbers, total_unknown_occupied_volumes, true_volumes):
-    if len(view_numbers) == 0 or len(total_unknown_occupied_volumes) == 0:
-        return
+
     plt.figure(figsize=(7, 4))
     plt.plot(
         view_numbers, total_unknown_occupied_volumes,
         marker="o", linewidth=2, label="Occupied + unknown volume",
     )
-    if true_volumes is not None and len(true_volumes) == len(view_numbers):
-        plt.plot(
-            view_numbers, true_volumes,
-            linestyle="--", marker="s", linewidth=2, label="True Unity volume",
-        )
+    plt.plot(
+        view_numbers, true_volumes,
+        linestyle="--", marker="s", linewidth=2, label="True Unity volume"
+    )
     plt.title("Occupied + Unknown Volume vs True Volume")
     plt.xlabel("Object view number")
     plt.ylabel("Volume [m³]")
@@ -201,3 +198,138 @@ def plot_total_unknown_occupied_vs_true_volume(view_numbers, total_unknown_occup
     plt.legend()
     plt.tight_layout()
     plt.show()
+    
+
+def plot_cum_nbv_gain_distance_history_sbs(
+    view_numbers,
+    nbv_gains,
+    nbv_distances,
+):
+    cumulative_gains = np.cumsum(nbv_gains)
+    cumulative_distances = np.cumsum(nbv_distances)
+
+    fig, axes = plt.subplots(
+        1,
+        2,
+        figsize=(12, 4),
+        sharex=True,
+    )
+
+    # Left: cumulative NBV gain
+    axes[0].plot(
+        view_numbers,
+        cumulative_gains,
+        marker="o",
+        linewidth=2,
+        color="tab:green",
+    )
+    axes[0].set_title("Cumulative NBV Gain")
+    axes[0].set_xlabel("Object View Number")
+    axes[0].set_ylabel("Cumulative Gain")
+    axes[0].grid(True)
+
+    # Right: cumulative travel distance
+    axes[1].plot(
+        view_numbers,
+        cumulative_distances,
+        marker="s",
+        linewidth=2,
+        color="tab:purple",
+    )
+    axes[1].set_title("Cumulative Distance to NBV")
+    axes[1].set_xlabel("Object View Number")
+    axes[1].set_ylabel("Cumulative Distance [m]")
+    axes[1].grid(True)
+
+    fig.suptitle(
+        "Cumulative Gain and Travel Distance After Each View",
+        fontsize=14,
+    )
+
+    plt.tight_layout()
+    plt.show()
+    
+def plot_cum_nbv_gain_distance_history_one(
+    view_numbers,
+    nbv_gains,
+    nbv_distances,
+):
+    cumulative_gains = np.cumsum(nbv_gains)
+    cumulative_distances = np.cumsum(nbv_distances)
+
+    fig, ax_gain = plt.subplots(figsize=(8, 5))
+
+    # Left y-axis: cumulative gain
+    gain_line = ax_gain.plot(
+        view_numbers,
+        cumulative_gains,
+        marker="o",
+        linewidth=2,
+        color="tab:green",
+        label="Cumulative NBV gain",
+    )
+
+    ax_gain.set_xlabel("Object view number")
+    ax_gain.set_ylabel("Cumulative gain", color="tab:green")
+    ax_gain.tick_params(axis="y", labelcolor="tab:green")
+    ax_gain.grid(True, alpha=0.3)
+
+    # Right y-axis: cumulative distance
+    ax_distance = ax_gain.twinx()
+
+    distance_line = ax_distance.plot(
+        view_numbers,
+        cumulative_distances,
+        marker="s",
+        linewidth=2,
+        color="tab:purple",
+        label="Cumulative distance",
+    )
+
+    ax_distance.set_ylabel(
+        "Cumulative distance [m]",
+        color="tab:purple",
+    )
+    ax_distance.tick_params(axis="y", labelcolor="tab:purple")
+
+    # Combined legend
+    lines = gain_line + distance_line
+    labels = [line.get_label() for line in lines]
+    ax_gain.legend(lines, labels, loc="upper left")
+
+    plt.title(
+        "Cumulative NBV Gain and Travel Distance After Each View"
+    )
+
+    fig.tight_layout()
+    plt.show()
+    
+    
+def save_nbv_history_to_excel(
+    view_numbers,
+    nbv_gains,
+    nbv_distances,
+    output_file_path,
+):
+    df = pd.DataFrame({
+        "View Number": view_numbers,
+        "NBV Gain": nbv_gains,
+        "NBV Distance": nbv_distances,
+        "Cumulative Gain": np.cumsum(nbv_gains),
+        "Cumulative Distance": np.cumsum(nbv_distances),
+    })
+    df.to_excel(output_file_path, index=False)
+
+
+def save_volume_history_to_excel(
+    view_numbers,
+    total_unknown_occupied_volumes,
+    true_volumes,
+    output_file_path,
+):
+    df = pd.DataFrame({
+        "View Number": view_numbers,
+        "Total Unknown + Occupied Volume": total_unknown_occupied_volumes,
+        "True Unity Volume": true_volumes,
+    })
+    df.to_excel(output_file_path, index=False)
