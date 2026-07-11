@@ -5,13 +5,16 @@ from nbv.nbv_utils import as_points_array, look_at_quaternion
 from nbv.nbv_surface import estimate_voxel_size_from_points, extract_surface_voxels
 from nbv.nbv_projection import compute_surface_projection_gain
 from nbv.nbv_debug_rendering import render_candidate_view_figure
-
+from nbv.nbv_distance import inflated_bbox_shortest_path_distance, plot_inflated_bbox_path
 
 def compute_next_best_view(
     occupied_voxels,
     unknown_voxels,
     object_center,
     candidate_views,
+    bbox_inflation_factor,
+    b_min,
+    b_max,
     current_camera_position=None,
     visited_view_ids=None,
     lambda_distance=1.0,
@@ -24,24 +27,8 @@ def compute_next_best_view(
     voxel_size=None,
     use_distance_penalty=False,
     print_scores=True,
+    plot_path=False,
 ):
-    """
-    Compute next best view using visible surface voxels.
-
-    This version does NOT render Matplotlib figures to compute the score.
-    It uses direct projection + z-buffering.
-
-    Score:
-        visible_unknown_surface_pixels * gain_ratio
-
-    where:
-        gain_ratio =
-            visible_unknown_surface_pixels /
-            visible_total_surface_pixels
-
-    If use_distance_penalty is True, score is divided by:
-        1 + lambda_distance * travel_distance
-    """
 
     if occupied_voxels is None:
         occupied_voxels = np.empty((0, 3))
@@ -63,10 +50,6 @@ def compute_next_best_view(
 
     if len(unknown_voxels) == 0:
         print("No unknown voxels left. NBV not needed.")
-        return None, 0.0
-
-    if candidate_views is None or len(candidate_views) == 0:
-        print("No candidate views available.")
         return None, 0.0
 
     if voxel_size is None:
@@ -176,11 +159,26 @@ def compute_next_best_view(
 
         unknown_in_fov = int(gain_result["unknown_surface_in_fov"])
         known_in_fov = int(gain_result["known_surface_in_fov"])
-
-        if current_camera_position is None:
-            travel_distance = 0.0
-        else:
-            travel_distance = float(np.linalg.norm(camera_position - current_camera_position))
+            
+        travel_distance, path = inflated_bbox_shortest_path_distance(
+            start_position=current_camera_position,
+            end_position=camera_position,
+            b_min=b_min,
+            b_max=b_max,
+            fac=bbox_inflation_factor,
+        )
+        
+        if plot_path:
+            plot_inflated_bbox_path(
+                start_position=current_camera_position, 
+                end_position=camera_position, 
+                bbox_min=b_min, 
+                bbox_max=b_max, 
+                path=path, 
+                fac=bbox_inflation_factor, 
+                total_distance = travel_distance, 
+                show_direct_path=True
+                )
 
         if use_distance_penalty:
             score = raw_gain_score / (1.0 + lambda_distance * travel_distance)
@@ -207,7 +205,8 @@ def compute_next_best_view(
                 f"visible unknown surface = {visible_unknown} | "
                 f"visible known surface = {visible_known} | "
                 f"ratio = {gain_ratio:.3f} | "
-                f"score = {score:.4f}"
+                f"score = {score:.4f} | "
+                f"distance = {travel_distance:.2f}"
             )
 
         if save_debug_images:

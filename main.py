@@ -7,7 +7,6 @@ from functions_print import (
     print_depth_info,
     plot_unknown_surface_voxel_history,
     plot_total_unknown_occupied_vs_true_volume,
-    plot_3d_scatter,
 )
 
 from functions_connect import (
@@ -34,7 +33,7 @@ NBV_PORT = 9020
 
 FLOOR_HEIGHT = 0.0
 OBJECT_HEIGHT_THRESHOLD = 1e-3
-VOXEL_SIZE = 0.0025
+VOXEL_SIZE = 0.003
 BBOX_MARGIN = 0.05
 
 CARVE_MARGIN = 0
@@ -42,7 +41,8 @@ CARVE_WITH_INVALID_DEPTH = True
 
 USE_NBV = True
 NBV_NUM_VIEWS = 8
-NBV_MARGIN_FACTOR = 1.2
+NBV_INFLATION_FACTOR = 1.2
+NBV_MARGIN_FACTOR = NBV_INFLATION_FACTOR * 1.2
 NBV_LAMBDA_DISTANCE = 1.5
 NBV_SAVE_DEBUG_IMAGES = False
 
@@ -57,6 +57,7 @@ NBV_ASPECT_RATIO = 16.0 / 9.0
 NBV_USE_DISTANCE_PENALTY = False
 
 SEND_NBV_TO_UNITY = True
+PLOT_PATH = True  
 
 # --------------------------------------------------
 # Movement gating settings
@@ -64,22 +65,6 @@ SEND_NBV_TO_UNITY = True
 NBV_POSITION_TOLERANCE = 0.03
 NBV_STABLE_FRAMES_REQUIRED = 1
 
-
-def print_candidate_views(candidate_views):
-    print("\n--- Candidate Views ---")
-
-    for view in candidate_views:
-        print(
-            f"View {view['view_id']:02d} | "
-            f"angle = {view.get('angle_deg', 0.0):.1f} deg | "
-            f"height_frac = {view.get('height_fraction', -1):.2f} | "
-            f"visible unknown surface = "
-            f"{view.get('visible_unknown_surface_pixels', None)} | "
-            f"visible known surface = "
-            f"{view.get('visible_known_surface_pixels', None)} | "
-            f"ratio = {view.get('gain_ratio', None)} | "
-            f"score = {view.get('score', None)}"
-        )
 
 
 def is_drone_at_target(current_position, target_position, tolerance):
@@ -354,9 +339,15 @@ def main():
                         save_debug_images=NBV_SAVE_DEBUG_IMAGES,
                         output_folder=NBV_OUTPUT_FOLDER,
                         print_scores=True,
+                        
+                        # Distance calculation
+                        bbox_inflation_factor=NBV_INFLATION_FACTOR,
+                        b_min=recon.bbox_min,
+                        b_max=recon.bbox_max,
+                        
+                        plot_path=PLOT_PATH,  # Set to True to visualize the path
                     )
 
-                    print_candidate_views(candidate_views)
 
                     if best_view is not None:
                         visited_view_ids.add(best_view["view_id"])
