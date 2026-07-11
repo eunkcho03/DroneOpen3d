@@ -85,56 +85,6 @@ def set_axes_equal(ax, points):
     ax.set_box_aspect([1, 1, 1])
 
 
-def plot_3d_scatter(points, color_axis, title, x_label, y_label, z_label):
-    """Universal 3D scatter plot generator."""
-    if points is None or len(points) == 0:
-        print(f"No points to plot for: {title}")
-        return
-
-    points_plot = downsample_points(points)
-
-    fig = plt.figure(figsize=(9, 7))
-    ax = fig.add_subplot(111, projection="3d")
-
-    scatter = ax.scatter(
-        points_plot[:, 0],
-        points_plot[:, 2],
-        points_plot[:, 1],
-        c=points_plot[:, color_axis], 
-        s=1,
-        cmap="viridis",
-    )
-
-    ax.set_title(title)
-    ax.set_xlabel(x_label)
-    ax.set_ylabel(y_label)
-    ax.set_zlabel(z_label)
-
-    fig.colorbar(scatter, ax=ax, label=z_label)
-    set_axes_equal(ax, points_plot)
-
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_top_view_occupancy(points_world):
-    if points_world is None or len(points_world) == 0:
-        return
-
-    x = points_world[:, 0]
-    z = points_world[:, 2]
-
-    plt.figure(figsize=(7, 7))
-    plt.scatter(x, z, s=1)
-    plt.title("Top View Occupancy")
-    plt.xlabel("World X [m]")
-    plt.ylabel("World Z [m]")
-    plt.axis("equal")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-
 def plot_bbox_edges(ax, bbox_corners):
     if bbox_corners is None:
         return
@@ -207,76 +157,6 @@ def plot_voxel_centers_3d(
     all_points = np.vstack(all_points_list)
 
     ax.set_title(title)
-    ax.set_xlabel("World X [m]")
-    ax.set_ylabel("World Z [m]")
-    ax.set_zlabel("World Y / Height [m]")
-    ax.legend()
-    set_axes_equal(ax, all_points)
-    ax.format_coord = lambda x, y: ""
-
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_reconstruction_layers(
-    observed_centers=None,
-    occupied_centers=None,
-    unknown_centers=None,
-    bbox_corners=None,
-    max_voxels_to_plot=300_000,
-):
-    if observed_centers is None: observed_centers = np.empty((0, 3))
-    if occupied_centers is None: occupied_centers = np.empty((0, 3))
-    if unknown_centers is None: unknown_centers = np.empty((0, 3))
-
-    observed_centers = np.asarray(observed_centers)
-    occupied_centers = np.asarray(occupied_centers)
-    unknown_centers = np.asarray(unknown_centers)
-
-    unknown_centers = remove_overlapping_points(
-        points_to_filter=unknown_centers,
-        priority_points=occupied_centers,
-    )
-
-    if (len(observed_centers) == 0 and len(occupied_centers) == 0 and len(unknown_centers) == 0):
-        print("No reconstruction layers to plot.")
-        return
-
-    fig = plt.figure(figsize=(9, 8))
-    ax = fig.add_subplot(111, projection="3d")
-    all_points_list = []
-
-    if len(unknown_centers) > 0:
-        unk_plot = downsample_points(unknown_centers, max_voxels_to_plot)
-        ax.scatter(
-            unk_plot[:, 0], unk_plot[:, 2], unk_plot[:, 1],
-            s=3, alpha=0.16, color="tab:orange", label="Unknown voxels",
-        )
-        all_points_list.append(unk_plot)
-
-    if len(occupied_centers) > 0:
-        occ_plot = downsample_points(occupied_centers, max_voxels_to_plot)
-        ax.scatter(
-            occ_plot[:, 0], occ_plot[:, 2], occ_plot[:, 1],
-            s=5, alpha=0.90, color="tab:blue", label="Occupied voxels",
-        )
-        all_points_list.append(occ_plot)
-
-    if len(observed_centers) > 0:
-        obs_plot = downsample_points(observed_centers, max_voxels_to_plot)
-        ax.scatter(
-            obs_plot[:, 0], obs_plot[:, 2], obs_plot[:, 1],
-            s=6, alpha=0.95, color="tab:red", label="Observed surface",
-        )
-        all_points_list.append(obs_plot)
-
-    if bbox_corners is not None:
-        plot_bbox_edges(ax, bbox_corners)
-        all_points_list.append(np.asarray(bbox_corners))
-
-    all_points = np.vstack(all_points_list)
-
-    ax.set_title("Reconstruction Layers")
     ax.set_xlabel("World X [m]")
     ax.set_ylabel("World Z [m]")
     ax.set_zlabel("World Y / Height [m]")

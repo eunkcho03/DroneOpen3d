@@ -6,7 +6,6 @@ from functions_print import (
     print_depth_info,
     plot_unknown_surface_voxel_history,
     plot_total_unknown_occupied_vs_true_volume,
-    plot_3d_scatter,
 )
 
 from functions_connect import (
