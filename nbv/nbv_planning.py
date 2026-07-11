@@ -251,4 +251,4 @@ def compute_next_best_view(
     print("====================================================")
     print("")
 
-    return best_view, best_score, distance, gain
+    return best_view, best_score, distance, gain, path_to_best_view

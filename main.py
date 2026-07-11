@@ -27,6 +27,7 @@ from functions_compute import (
 
 from nbv.nbv_candidate_generation import generate_candidate_views_from_bbox
 from nbv.nbv_planning import compute_next_best_view
+from path_plotting import plot_all_nbv_positions_3d
 
 
 HOST = "127.0.0.1"
@@ -52,16 +53,18 @@ NBV_OUTPUT_FOLDER = "potential_views_debug"
 NBV_PROJECTION_WIDTH = 160
 NBV_PROJECTION_HEIGHT = 160
 NBV_ASPECT_RATIO = 16.0 / 9.0
-NBV_USE_DISTANCE_PENALTY = True
+NBV_USE_DISTANCE_PENALTY = False
 NBV_POSITION_TOLERANCE = 0.03
 NBV_STABLE_FRAMES_REQUIRED = 1
 
 SEND_NBV_TO_UNITY = True
 PLOT_PATH = False  
 PLOT_VOXEL_CENTERS = False
+PLOT_HISTORY = False
+PLOT_3D_PATHS = True
 
 SAVE_HISTORY_TO_EXCEL = True
-PLOT_HISTORY = True
+
 
 
 def is_drone_at_target(current_position, target_position, tolerance):
@@ -92,8 +95,11 @@ def main():
     volume_view_numbers = [0]
     total_unknown_occupied_volume_history = []
     true_volume_for_total_history = []
+    
     nbv_distance = [0]
     nbv_gain = [0]
+    nbv_all_paths = []
+    nbv_simple_paths = []
 
     visited_view_ids = set()
 
@@ -142,7 +148,6 @@ def main():
             quaternion = (rot_x, rot_y, rot_z, rot_w)
 
             current_position_np = np.asarray(position, dtype=float)
-
             # Use actual received image aspect ratio for NBV projection.
             if height > 0:
                 current_aspect_ratio = float(width) / float(height)
@@ -306,7 +311,7 @@ def main():
                 )
 
                 if len(visited_view_ids) < len(candidate_views):
-                    best_view, best_score, distance, gain = compute_next_best_view(
+                    best_view, best_score, distance, gain, path_to_best_view = compute_next_best_view(
                         occupied_voxels=recon.occupied_centers,
                         unknown_voxels=recon.unknown_centers,
                         object_center=object_center,
@@ -338,6 +343,18 @@ def main():
                     
                     nbv_distance.append(distance)
                     nbv_gain.append(gain)
+                    nbv_all_paths.extend(path_to_best_view)
+                    print(nbv_all_paths)
+                    print(frame_count)
+                    if frame_count == 0:
+                        nbv_simple_paths.append(path_to_best_view[0])
+                        nbv_simple_paths.append(path_to_best_view[-1])
+                    else:
+                        nbv_simple_paths.append(path_to_best_view[-1])
+                    print(nbv_simple_paths)
+
+
+                
                     if PLOT_HISTORY:
                         plot_cum_nbv_gain_distance_history_one(
                             view_numbers=volume_view_numbers,
@@ -365,6 +382,26 @@ def main():
                             true_volumes=true_volume_for_total_history,
                             output_file_path=f"history/volume_history_DPEN_{NBV_USE_DISTANCE_PENALTY}.xlsx",
                         )
+                        
+                    if PLOT_3D_PATHS and path_to_best_view is not None:
+                        
+                        plot_all_nbv_positions_3d(
+                            bbox_min=recon.bbox_min,
+                            bbox_max=recon.bbox_max,
+                            inflation_factor=NBV_INFLATION_FACTOR,
+                            nbv_waypoints=nbv_all_paths,
+                            elevation=25,
+                            azimuth=-55,
+                        )
+                        plot_all_nbv_positions_3d(
+                            bbox_min=recon.bbox_min,
+                            bbox_max=recon.bbox_max,
+                            inflation_factor=NBV_INFLATION_FACTOR,
+                            nbv_waypoints=nbv_simple_paths,
+                            elevation=25,
+                            azimuth=-55,
+                        )
+
 
 
                     if best_view is not None:
