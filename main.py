@@ -37,7 +37,7 @@ NBV_PORT = 9020
 
 FLOOR_HEIGHT = 0.0
 OBJECT_HEIGHT_THRESHOLD = 1e-3
-VOXEL_SIZE = 0.003
+VOXEL_SIZE = 0.01
 BBOX_MARGIN = 0.05
 
 CARVE_MARGIN = 0
@@ -59,11 +59,11 @@ NBV_STABLE_FRAMES_REQUIRED = 1
 
 SEND_NBV_TO_UNITY = True
 PLOT_PATH = False  
-PLOT_VOXEL_CENTERS = False
-PLOT_HISTORY = False
-PLOT_3D_PATHS = True
+PLOT_VOXEL_CENTERS = True
+PLOT_HISTORY = True
+PLOT_3D_PATHS = False
 
-SAVE_HISTORY_TO_EXCEL = True
+SAVE_HISTORY_TO_EXCEL = False
 
 
 
@@ -255,6 +255,25 @@ def main():
                     bbox_corners=recon.bbox_corners,
                     title=f"Occupied and Unknown Voxels - View {detected_view_count}",
                 )
+                
+                
+                #print(
+                #    "\n===================================================="
+                #    f"\n Printing unknown voxels"
+                #    "\n===================================================="
+                #)
+                
+                #unknown_surface_centers = recon.get_unknown_frontier_centers()
+                
+                #print(len(unknown_surface_centers))
+                
+                #plot_voxel_centers_3d(
+                #    occupied_centers=None,
+                #    unknown_centers=unknown_surface_centers,
+                #    bbox_corners=recon.bbox_corners,
+                #    title=f"Unknown voxels - View {detected_view_count}",
+                #)
+
 
             # --------------------------------------------------
             # Volume history
@@ -279,6 +298,7 @@ def main():
             true_volume_for_total_history.append(true_volume)
             unknown_surface_count = recon.count_unknown_surface_voxels()
             unknown_surface_counts.append(unknown_surface_count)
+            #print(unknown_surface_counts)
 
             if PLOT_HISTORY:
                 plot_total_unknown_occupied_vs_true_volume(
@@ -344,14 +364,14 @@ def main():
                     nbv_distance.append(distance)
                     nbv_gain.append(gain)
                     nbv_all_paths.extend(path_to_best_view)
-                    print(nbv_all_paths)
-                    print(frame_count)
+                    #print(nbv_all_paths)
+                    #print(frame_count)
                     if frame_count == 0:
                         nbv_simple_paths.append(path_to_best_view[0])
                         nbv_simple_paths.append(path_to_best_view[-1])
                     else:
                         nbv_simple_paths.append(path_to_best_view[-1])
-                    print(nbv_simple_paths)
+                    #print(nbv_simple_paths)
 
 
                 

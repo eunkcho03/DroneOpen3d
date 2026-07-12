@@ -357,38 +357,34 @@ class ExtrusionFusionReconstruction:
         )
         return self
 
-    def get_unknown_surface_indices(self):
+    def get_unknown_frontier_indices(self):
         """
-        Return unknown voxels that touch free space in a 6-neighborhood.
+        Return UNKNOWN voxels that directly touch FREE space.
 
-        Faster than the old set-neighbor loop because it uses boolean slicing.
-        Returned type is a set of (ix, iy, iz) tuples for compatibility.
+        These are frontier candidates, but not all of them are necessarily
+        visible from a particular candidate camera.
         """
         if not self.initialized or self.voxel_state is None:
-            return set()
+            return np.empty((0, 3), dtype=int)
 
         unknown = self.voxel_state == UNKNOWN
         free = self.voxel_state == FREE
 
         if not np.any(unknown) or not np.any(free):
-            return set()
+            return np.empty((0, 3), dtype=int)
 
-        surface = np.zeros(self.grid_shape, dtype=bool)
+        frontier = np.zeros(self.grid_shape, dtype=bool)
 
-        # Neighbor in +/- x
-        surface[1:, :, :] |= unknown[1:, :, :] & free[:-1, :, :]
-        surface[:-1, :, :] |= unknown[:-1, :, :] & free[1:, :, :]
+        frontier[1:, :, :] |= unknown[1:, :, :] & free[:-1, :, :]
+        frontier[:-1, :, :] |= unknown[:-1, :, :] & free[1:, :, :]
 
-        # Neighbor in +/- y
-        surface[:, 1:, :] |= unknown[:, 1:, :] & free[:, :-1, :]
-        surface[:, :-1, :] |= unknown[:, :-1, :] & free[:, 1:, :]
+        frontier[:, 1:, :] |= unknown[:, 1:, :] & free[:, :-1, :]
+        frontier[:, :-1, :] |= unknown[:, :-1, :] & free[:, 1:, :]
 
-        # Neighbor in +/- z
-        surface[:, :, 1:] |= unknown[:, :, 1:] & free[:, :, :-1]
-        surface[:, :, :-1] |= unknown[:, :, :-1] & free[:, :, 1:]
+        frontier[:, :, 1:] |= unknown[:, :, 1:] & free[:, :, :-1]
+        frontier[:, :, :-1] |= unknown[:, :, :-1] & free[:, :, 1:]
 
-        indices = np.argwhere(surface)
-        return {tuple(idx) for idx in indices}
+        return np.argwhere(frontier)
 
     def count_unknown_surface_voxels(self):
         if not self.initialized or self.voxel_state is None:
@@ -413,12 +409,14 @@ class ExtrusionFusionReconstruction:
 
         return int(np.count_nonzero(surface))
 
-    def get_unknown_surface_centers(self):
-        surface_indices = np.array(list(self.get_unknown_surface_indices()), dtype=int)
-        if len(surface_indices) == 0:
-            return np.empty((0, 3))
-        return self._indices_to_centers_from_array(surface_indices)
+    def get_unknown_frontier_centers(self):
+        indices = self.get_unknown_frontier_indices()
 
+        if len(indices) == 0:
+            return np.empty((0, 3), dtype=float)
+
+        return self._indices_to_centers_from_array(indices)
+    
     def _initialize_bbox_from_detection(self, points_world):
         self.bbox_min, self.bbox_max, self.bbox_corners = self._compute_bbox(points_world)
         
