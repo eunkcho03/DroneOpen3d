@@ -9,7 +9,6 @@ FREE = 0
 UNKNOWN = 1
 OCCUPIED = 2
 
-
 def make_valid_depth_mask(depth, far):
     depth = np.asarray(depth)
     return (
@@ -63,9 +62,6 @@ def depth_to_camera_points(depth, fov_degrees, far, keep_invalid_depth=False):
 
 def camera_to_world(points_camera, position, quaternion):
     points_camera = np.asarray(points_camera, dtype=float)
-    if len(points_camera) == 0:
-        return np.empty((0, 3))
-
     R = quaternion_to_rotation_matrix(*quaternion)
     position = np.asarray(position, dtype=float)
     return points_camera @ R.T + position
@@ -73,68 +69,15 @@ def camera_to_world(points_camera, position, quaternion):
 
 def world_to_camera(points_world, position, quaternion):
     points_world = np.asarray(points_world, dtype=float)
-    if len(points_world) == 0:
-        return np.empty((0, 3))
-
     R = quaternion_to_rotation_matrix(*quaternion)
     position = np.asarray(position, dtype=float)
     return (points_world - position) @ R
 
-
-class DepthFrameProcessor:
-    def __init__(
-        self,
-        depth,
-        fov_degrees,
-        far,
-        position,
-        quaternion,
-        floor_height=0.0,
-        height_threshold=0.02,
-        verbose=True,
-    ):
-        self.depth = depth
-        self.fov_degrees = fov_degrees
-        self.far = far
-        self.position = position
-        self.quaternion = quaternion
-        self.floor_height = floor_height
-        self.height_threshold = height_threshold
-        self.verbose = verbose
-
-        self.points_camera = None
-        self.points_world = None
-        self.filtered_points = None
-        self.valid_mask = None
-
-    def run(self):
-        self.points_camera, self.valid_mask = depth_to_camera_points(
-            self.depth,
-            self.fov_degrees,
-            self.far,
-        )
-        self.points_world = camera_to_world(
-            self.points_camera,
-            self.position,
-            self.quaternion,
-        )
-        self.filtered_points = self._filter_by_height(self.points_world)
-        return self
-
-    def _filter_by_height(self, points_world):
-        if points_world is None or len(points_world) == 0:
-            return np.empty((0, 3))
-
-        min_height = self.floor_height + self.height_threshold
-        filtered = points_world[points_world[:, 1] > min_height]
-
-        if self.verbose:
-            print(
-                f"Height filter | input: {len(points_world)} | "
-                f"filtered: {len(filtered)} | min Y: {min_height:.3f}"
-            )
-
-        return filtered
+def filter_by_height(depth, fov_degrees, far, position, quaternion, floor_height, height_threshold):
+    points_camera, valid_mask = depth_to_camera_points(depth, fov_degrees, far)
+    points_world = camera_to_world(points_camera, position, quaternion)
+    min_height = floor_height + height_threshold 
+    return points_world[points_world[:, 1] > min_height ]
 
 
 class ExtrusionFusionReconstruction:
@@ -143,96 +86,18 @@ class ExtrusionFusionReconstruction:
         voxel_size=0.01,
         bbox_margin=0.05,
         floor_height=0.0,
-        max_points=None,
-        verbose=True,
-        update_center_outputs=True,
-        max_centers_to_store=None,
     ):
         self.voxel_size = voxel_size
         self.bbox_margin = bbox_margin
         self.floor_height = floor_height
-        self.max_points = max_points
-        self.verbose = verbose
-
-        # If plotting becomes slow, set update_center_outputs=False or limit with max_centers_to_store.
-        self.update_center_outputs = update_center_outputs
-        self.max_centers_to_store = max_centers_to_store
 
         self.initialized = False
         self.bbox_min = None
         self.bbox_max = None
         self.bbox_corners = None
         self.grid_shape = None
-
-        # Kept for compatibility with old code/logging.
-        self.free_prob = 0.0
-        self.unknown_prob = 0.5
-        self.occupied_prob = 1.0
-        self.occupied_threshold = 0.75
-
-        # Dense state arrays.
         self.voxel_state = None       # uint8 grid: FREE / UNKNOWN / OCCUPIED
         self.observed_mask = None     # bool grid: has this voxel ever been observed as surface?
-
-        # Compatibility attributes. These are NumPy arrays, not sets.
-        self.occupied_indices = np.empty((0, 3), dtype=int)
-        self.observed_indices = np.empty((0, 3), dtype=int)
-        self.free_indices = np.empty((0, 3), dtype=int)
-        self.unknown_indices = np.empty((0, 3), dtype=int)
-
-        self.observed_centers = np.empty((0, 3))
-        self.occupied_centers = np.empty((0, 3))
-        self.free_centers = np.empty((0, 3))
-        self.unknown_centers = np.empty((0, 3))
-
-        self.observed_volume = 0.0
-        self.occupied_volume = 0.0
-        self.free_volume = 0.0
-        self.unknown_volume = 0.0
-        self.expected_volume = 0.0
-
-    def add_view(
-        self,
-        points_world,
-        depth=None,
-        fov_degrees=None,
-        far=None,
-        position=None,
-        quaternion=None,
-        carve_margin=None,
-        carve_with_invalid_depth=False,
-    ):
-        points_world = self._validate_points(points_world)
-
-        if not self.initialized:
-            if len(points_world) == 0:
-                self._log("Skipping initialization: no valid object points.")
-                return self
-            self._initialize_bbox_from_detection(points_world)
-            
-
-        if self._has_camera_data(depth, fov_degrees, far, position, quaternion):
-            self.carve_with_depth_image(
-                depth=depth,
-                fov_degrees=fov_degrees,
-                far=far,
-                position=position,
-                quaternion=quaternion,
-                carve_margin=carve_margin,
-                carve_with_invalid_depth=carve_with_invalid_depth,
-            )
-        else:
-            self._log("Skipping carving: missing depth/camera information.")
-
-        new_observed_indices = self._voxelize(points_world)
-        before_observed = int(np.count_nonzero(self.observed_mask))
-
-        self._mark_observed_occupied(new_observed_indices)
-
-        after_observed = int(np.count_nonzero(self.observed_mask))
-        self._update_outputs()
-        self._log_status("Processed view", new_observed=after_observed - before_observed)
-        return self
 
     def carve_with_depth_image(
         self,
@@ -241,31 +106,17 @@ class ExtrusionFusionReconstruction:
         far,
         position,
         quaternion,
-        carve_margin=None,
-        carve_with_invalid_depth=False,
-        keep_invalid_depth=False,
     ):
-        if not self.initialized or self.voxel_state is None:
-            return self
-
         depth = np.asarray(depth, dtype=float)
-        if depth.ndim != 2:
-            return self
-
         height, width = depth.shape
         fx, fy, cx, cy = camera_intrinsics(width, height, fov_degrees)
+        valid_depth_mask = make_valid_depth_mask(depth, far)
 
-        if keep_invalid_depth:
-            valid_depth_mask = np.ones(depth.shape, dtype=bool)
-        else:
-            valid_depth_mask = make_valid_depth_mask(depth, far)
+        ix, iy, iz = np.where(self.voxel_state != FREE)
+        indices = np.column_stack((ix, iy, iz))
+        centers_world = self._indices_to_centers_from_array(indices)
 
-        # Only project voxels that are not already free.
-        active_indices = np.argwhere(self.voxel_state != FREE)
-        if len(active_indices) == 0:
-            return self
-
-        centers_world = self._indices_to_centers_from_array(active_indices)
+        # 2. Project into camera space
         centers_camera = world_to_camera(centers_world, position, quaternion)
 
         x = centers_camera[:, 0]
@@ -277,17 +128,10 @@ class ExtrusionFusionReconstruction:
             v = np.round(y * fy / z + cy).astype(int)
 
         projects_inside_image = (
-            (z > 0.0)
-            & (u >= 0)
-            & (u < width)
-            & (v >= 0)
-            & (v < height)
+            (z > 0.0) & (u >= 0) & (u < width) & (v >= 0) & (v < height)
         )
 
-        if not np.any(projects_inside_image):
-            return self
-
-        candidate_indices = active_indices[projects_inside_image]
+        candidate_indices = indices[projects_inside_image]
         candidate_z = z[projects_inside_image]
         candidate_u = u[projects_inside_image]
         candidate_v = v[projects_inside_image]
@@ -295,84 +139,36 @@ class ExtrusionFusionReconstruction:
         measured_depth = depth[candidate_v, candidate_u]
         valid_measured_depth = valid_depth_mask[candidate_v, candidate_u]
 
-        carve_free_space = valid_measured_depth & (candidate_z < measured_depth - carve_margin)
+        # 3. Evaluate carving rule
+        carve_free_space = np.where(
+            valid_measured_depth,
+            candidate_z < measured_depth,
+            candidate_z < far,
+        )
 
-        if carve_with_invalid_depth:
-            carve_free_space |= (~valid_measured_depth) & (candidate_z < far - carve_margin)
-
-        carve_indices = candidate_indices[carve_free_space]
-        before_free = int(np.count_nonzero(self.voxel_state == FREE))
-
-        if len(carve_indices) > 0:
-            ix = carve_indices[:, 0]
-            iy = carve_indices[:, 1]
-            iz = carve_indices[:, 2]
-
-            # Do not erase voxels that have been directly observed as object surface.
-            can_carve = ~self.observed_mask[ix, iy, iz]
-            ix = ix[can_carve]
-            iy = iy[can_carve]
-            iz = iz[can_carve]
-
-            self.voxel_state[ix, iy, iz] = FREE
-
-        # Safety: observed surface voxels always stay occupied.
-        self.voxel_state[self.observed_mask] = OCCUPIED
+        remove_indices = candidate_indices[carve_free_space]
+        
+        # 4. Update the dense grid directly (protecting observed surface)
+        removed_count = 0
+        for idx in remove_indices:
+            cx, cy, cz = idx
+            # Only carve if it is not part of the protected observed surface
+            if not self.observed_mask[cx, cy, cz]:
+                self.voxel_state[cx, cy, cz] = FREE
+                removed_count += 1
 
         self._update_outputs()
 
-        after_free = int(np.count_nonzero(self.voxel_state == FREE))
-        newly_free = after_free - before_free
-
-        self._log(
+        print(
             f"Depth carving | projected voxels: {len(candidate_indices)} | "
-            f"newly free: {newly_free} | "
-            f"occupied volume: {self.occupied_volume:.6f} m³"
+            f"removed: {removed_count} | volume: {self.occupied_volume:.6f} m³"
         )
+
         return self
 
-    def get_unknown_frontier_indices(self):
-        """
-        Return UNKNOWN voxels that directly touch FREE space.
-
-        These are frontier candidates, but not all of them are necessarily
-        visible from a particular candidate camera.
-        """
-        if not self.initialized or self.voxel_state is None:
-            return np.empty((0, 3), dtype=int)
-
-        unknown = self.voxel_state == UNKNOWN
-        free = self.voxel_state == FREE
-
-        if not np.any(unknown) or not np.any(free):
-            return np.empty((0, 3), dtype=int)
-
-        frontier = np.zeros(self.grid_shape, dtype=bool)
-
-        frontier[1:, :, :] |= unknown[1:, :, :] & free[:-1, :, :]
-        frontier[:-1, :, :] |= unknown[:-1, :, :] & free[1:, :, :]
-
-        frontier[:, 1:, :] |= unknown[:, 1:, :] & free[:, :-1, :]
-        frontier[:, :-1, :] |= unknown[:, :-1, :] & free[:, 1:, :]
-
-        frontier[:, :, 1:] |= unknown[:, :, 1:] & free[:, :, :-1]
-        frontier[:, :, :-1] |= unknown[:, :, :-1] & free[:, :, 1:]
-
-        return np.argwhere(frontier)
-
     def count_occupied_surface_voxels(self):
-        """
-        Count OCCUPIED voxels that touch FREE space in a 6-neighborhood.
-        """
-        if not self.initialized or self.voxel_state is None:
-            return 0
-
         occupied = self.voxel_state == OCCUPIED
         free = self.voxel_state == FREE
-
-        if not np.any(occupied) or not np.any(free):
-            return 0
-
         surface = np.zeros(self.grid_shape, dtype=bool)
 
         # Neighbour in +/- x
@@ -390,15 +186,8 @@ class ExtrusionFusionReconstruction:
         return int(np.count_nonzero(surface))
 
     def count_unknown_surface_voxels(self):
-        if not self.initialized or self.voxel_state is None:
-            return 0
-
         unknown = self.voxel_state == UNKNOWN
         free = self.voxel_state == FREE
-
-        if not np.any(unknown) or not np.any(free):
-            return 0
-
         surface = np.zeros(self.grid_shape, dtype=bool)
 
         surface[1:, :, :] |= unknown[1:, :, :] & free[:-1, :, :]
@@ -411,48 +200,26 @@ class ExtrusionFusionReconstruction:
         surface[:, :, :-1] |= unknown[:, :, :-1] & free[:, :, 1:]
 
         return int(np.count_nonzero(surface))
-
-    def get_unknown_frontier_centers(self):
-        indices = self.get_unknown_frontier_indices()
-
-        if len(indices) == 0:
-            return np.empty((0, 3), dtype=float)
-
-        return self._indices_to_centers_from_array(indices)
     
-    def _initialize_bbox_from_detection(self, points_world):
+    def initialize(self, points_world):
+        points_world = np.asarray(points_world)
         self.bbox_min, self.bbox_max, self.bbox_corners = self._compute_bbox(points_world)
-        
-        bbox_size = self.bbox_max - self.bbox_min
-        bbox_volume = np.prod(bbox_size)
-
-        self._log(
-            f"Initial bbox | "
-            f"min: {self.bbox_min} | "
-            f"max: {self.bbox_max} | "
-            f"size: {bbox_size} m | "
-            f"volume: {bbox_volume:.6f} m³ | "
-            f"voxel size: {self.voxel_size} m"
-        )
-    
         self.grid_shape = self._compute_grid_shape()
 
-        # Fill whole bbox as UNKNOWN with one dense array allocation.
+        # 1. Allocate the dense 3D arrays
         self.voxel_state = np.full(self.grid_shape, UNKNOWN, dtype=np.uint8)
         self.observed_mask = np.zeros(self.grid_shape, dtype=bool)
 
-        observed_indices = self._voxelize(points_world)
-        self._mark_observed_occupied(observed_indices)
+        # 2. Mark the observed surface points in the grid
+        observed_indices_unique = self._voxelize(points_world)
+        if len(observed_indices_unique) > 0:
+            self._mark_observed_occupied(observed_indices_unique)
 
         self.initialized = True
         self._update_outputs()
-        self._log_status("Initialized dense bbox from first object detection")
-        return self
+        self._log_status('Initialized bbox from first object detection')
 
     def _mark_observed_occupied(self, indices):
-        if indices is None or len(indices) == 0:
-            return
-
         indices = np.asarray(indices, dtype=int)
         ix = indices[:, 0]
         iy = indices[:, 1]
@@ -461,27 +228,10 @@ class ExtrusionFusionReconstruction:
         self.observed_mask[ix, iy, iz] = True
         self.voxel_state[ix, iy, iz] = OCCUPIED
 
-    def _validate_points(self, points_world):
-        if points_world is None:
-            return np.empty((0, 3))
-
-        points_world = np.asarray(points_world, dtype=float)
-
-        if len(points_world) == 0:
-            return np.empty((0, 3))
-
-        if self.max_points is not None and len(points_world) > self.max_points:
-            selected = np.random.choice(len(points_world), self.max_points, replace=False)
-            points_world = points_world[selected]
-
-        return points_world
-
     def _compute_bbox(self, points_world):
         bbox_min = points_world.min(axis=0).copy()
         bbox_max = points_world.max(axis=0).copy()
 
-        # Same behavior as your previous code:
-        # add margin in x/z only, and force bottom to floor height.
         bbox_min[[0, 2]] -= self.bbox_margin
         bbox_max[[0, 2]] += self.bbox_margin
         bbox_min[1] = self.floor_height
@@ -509,102 +259,33 @@ class ExtrusionFusionReconstruction:
         )
 
     def _voxelize(self, points_world):
-        """
-        Convert world points to unique integer voxel indices.
-
-        Returns:
-            indices: NumPy array with shape (N, 3), dtype int
-        """
-        if self.bbox_min is None or self.grid_shape is None:
-            return np.empty((0, 3), dtype=int)
-
-        points_world = np.asarray(points_world, dtype=float)
-        if len(points_world) == 0:
-            return np.empty((0, 3), dtype=int)
-
         indices = np.floor((points_world - self.bbox_min) / self.voxel_size).astype(int)
-
         inside = np.all((indices >= 0) & (indices < self.grid_shape), axis=1)
         indices = indices[inside]
-
-        if len(indices) == 0:
-            return np.empty((0, 3), dtype=int)
-
         return np.unique(indices, axis=0)
 
-    def _indices_to_centers(self, indices):
-        if indices is None or len(indices) == 0:
-            return np.empty((0, 3))
-        return self._indices_to_centers_from_array(indices)
-
     def _indices_to_centers_from_array(self, indices):
-        indices = np.asarray(indices, dtype=float)
         return self.bbox_min + (indices + 0.5) * self.voxel_size
 
-    def _limited_indices_from_mask(self, mask):
-        indices = np.argwhere(mask)
-        if self.max_centers_to_store is not None and len(indices) > self.max_centers_to_store:
-            selected = np.random.choice(len(indices), self.max_centers_to_store, replace=False)
-            indices = indices[selected]
-        return indices
-
     def _update_outputs(self):
-        if self.voxel_state is None:
-            return
-
         voxel_volume = self.voxel_size ** 3
 
         occupied_mask = self.voxel_state == OCCUPIED
         unknown_mask = self.voxel_state == UNKNOWN
-        free_mask = self.voxel_state == FREE
 
-        observed_count = int(np.count_nonzero(self.observed_mask))
         occupied_count = int(np.count_nonzero(occupied_mask))
         unknown_count = int(np.count_nonzero(unknown_mask))
-        free_count = int(np.count_nonzero(free_mask))
 
-        self.observed_volume = observed_count * voxel_volume
         self.occupied_volume = occupied_count * voxel_volume
         self.unknown_volume = unknown_count * voxel_volume
-        self.free_volume = free_count * voxel_volume
 
-        # Same meaning as old sum(voxel_prob.values()) * voxel_volume:
-        # occupied contributes 1.0, unknown contributes 0.5, free contributes 0.0.
-        self.expected_volume = (occupied_count + 0.5 * unknown_count) * voxel_volume
+        self.occupied_indices = np.argwhere(occupied_mask)
+        self.unknown_indices = np.argwhere(unknown_mask)
 
-        if not self.update_center_outputs:
-            self.observed_indices = np.empty((0, 3), dtype=int)
-            self.occupied_indices = np.empty((0, 3), dtype=int)
-            self.unknown_indices = np.empty((0, 3), dtype=int)
-            self.free_indices = np.empty((0, 3), dtype=int)
-            self.observed_centers = np.empty((0, 3))
-            self.occupied_centers = np.empty((0, 3))
-            self.unknown_centers = np.empty((0, 3))
-            self.free_centers = np.empty((0, 3))
-            return
-
-        self.observed_indices = self._limited_indices_from_mask(self.observed_mask)
-        self.occupied_indices = self._limited_indices_from_mask(occupied_mask)
-        self.unknown_indices = self._limited_indices_from_mask(unknown_mask)
-        self.free_indices = self._limited_indices_from_mask(free_mask)
-
-        self.observed_centers = self._indices_to_centers(self.observed_indices)
-        self.occupied_centers = self._indices_to_centers(self.occupied_indices)
-        self.unknown_centers = self._indices_to_centers(self.unknown_indices)
-        self.free_centers = self._indices_to_centers(self.free_indices)
-
-    @staticmethod
-    def _has_camera_data(depth, fov_degrees, far, position, quaternion):
-        return all(v is not None for v in [depth, fov_degrees, far, position, quaternion])
-
-    def _log(self, message):
-        if self.verbose:
-            print(message)
+        self.occupied_centers = self._indices_to_centers_from_array(self.occupied_indices)
+        self.unknown_centers = self._indices_to_centers_from_array(self.unknown_indices)
 
     def _log_status(self, title, new_observed=None):
-        if not self.verbose:
-            return
-
         observed_count = int(np.count_nonzero(self.observed_mask)) if self.observed_mask is not None else 0
         occupied_count = int(np.count_nonzero(self.voxel_state == OCCUPIED)) if self.voxel_state is not None else 0
         unknown_count = int(np.count_nonzero(self.voxel_state == UNKNOWN)) if self.voxel_state is not None else 0

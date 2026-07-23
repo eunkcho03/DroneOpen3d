@@ -22,7 +22,7 @@ from functions_connect import (
 )
 
 from functions_compute import (
-    DepthFrameProcessor,
+    filter_by_height,
     ExtrusionFusionReconstruction,
 )
 
@@ -41,9 +41,6 @@ OBJECT_HEIGHT_THRESHOLD = 1e-3
 VOXEL_SIZE = 0.005
 BBOX_MARGIN = 0.05
 
-CARVE_MARGIN = 0
-CARVE_WITH_INVALID_DEPTH = True
-
 USE_NBV = True
 NBV_NUM_VIEWS = 8
 NBV_INFLATION_FACTOR = 1.5
@@ -60,8 +57,8 @@ NBV_STABLE_FRAMES_REQUIRED = 1
 
 SEND_NBV_TO_UNITY = True
 PLOT_PATH = False  
-PLOT_VOXEL_CENTERS = False 
-PLOT_HISTORY = True
+PLOT_VOXEL_CENTERS = True 
+PLOT_HISTORY = False
 PLOT_3D_PATHS = False
 SAVE_HISTORY_TO_EXCEL = False
 
@@ -180,6 +177,22 @@ def main():
                 position,
                 quaternion,
             )
+            
+            if not recon.initialized:
+                filtered_points = filter_by_height(
+                    depth=depth,
+                    fov_degrees=fov, 
+                    far=far,
+                    position=position,
+                    quaternion=quaternion,
+                    floor_height=FLOOR_HEIGHT,
+                    height_threshold=OBJECT_HEIGHT_THRESHOLD
+                )
+                
+                if len(filtered_points) == 0:
+                    continue 
+                recon.initialize(filtered_points)                
+                
 
             # --------------------------------------------------
             # Wait until the drone reaches the previous NBV
@@ -232,35 +245,16 @@ def main():
                 stable_target_frame_count = 0
 
             # --------------------------------------------------
-            # Process depth frame
-            # --------------------------------------------------
-            frame = DepthFrameProcessor(
-                depth=depth,
-                fov_degrees=fov,
-                far=far,
-                position=position,
-                quaternion=quaternion,
-                floor_height=FLOOR_HEIGHT,
-                height_threshold=OBJECT_HEIGHT_THRESHOLD,
-            ).run()
-
-            if len(frame.filtered_points) == 0:
-                frame_count += 1
-                continue
-
-            # --------------------------------------------------
             # Reconstruction update
             # --------------------------------------------------
-            recon.add_view(
-                points_world=frame.filtered_points,
+
+            recon.carve_with_depth_image(
                 depth=depth,
                 fov_degrees=fov,
                 far=far,
                 position=position,
                 quaternion=quaternion,
-                carve_margin=CARVE_MARGIN,
-                carve_with_invalid_depth=CARVE_WITH_INVALID_DEPTH,
-            )
+                )
 
             detected_view_count += 1
 
