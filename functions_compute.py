@@ -41,15 +41,11 @@ def quaternion_to_rotation_matrix(qx, qy, qz, qw):
     ])
 
 
-def depth_to_camera_points(depth, fov_degrees, far, keep_invalid_depth=False):
+def depth_to_camera_points(depth, fov_degrees, far):
     depth = np.asarray(depth, dtype=float)
     height, width = depth.shape
     fx, fy, cx, cy = camera_intrinsics(width, height, fov_degrees)
-
-    if keep_invalid_depth:
-        valid_mask = np.ones(depth.shape, dtype=bool)
-    else:
-        valid_mask = make_valid_depth_mask(depth, far)
+    valid_mask = make_valid_depth_mask(depth, far)
 
     u, v = np.meshgrid(np.arange(width), np.arange(height))
     z = depth[valid_mask]
@@ -57,7 +53,7 @@ def depth_to_camera_points(depth, fov_degrees, far, keep_invalid_depth=False):
     y = (v[valid_mask] - cy) * z / fy
 
     points_camera = np.column_stack((x, y, z))
-    return points_camera, valid_mask
+    return points_camera
 
 
 def camera_to_world(points_camera, position, quaternion):
@@ -66,7 +62,6 @@ def camera_to_world(points_camera, position, quaternion):
     position = np.asarray(position, dtype=float)
     return points_camera @ R.T + position
 
-
 def world_to_camera(points_world, position, quaternion):
     points_world = np.asarray(points_world, dtype=float)
     R = quaternion_to_rotation_matrix(*quaternion)
@@ -74,7 +69,7 @@ def world_to_camera(points_world, position, quaternion):
     return (points_world - position) @ R
 
 def filter_by_height(depth, fov_degrees, far, position, quaternion, floor_height, height_threshold):
-    points_camera, valid_mask = depth_to_camera_points(depth, fov_degrees, far)
+    points_camera = depth_to_camera_points(depth, fov_degrees, far)
     points_world = camera_to_world(points_camera, position, quaternion)
     min_height = floor_height + height_threshold 
     return points_world[points_world[:, 1] > min_height ]
@@ -86,18 +81,25 @@ class ExtrusionFusionReconstruction:
         voxel_size=0.01,
         bbox_margin=0.05,
         floor_height=0.0,
+        min_z_height=0.01,
     ):
         self.voxel_size = voxel_size
         self.bbox_margin = bbox_margin
         self.floor_height = floor_height
-
+        self.min_z_height = min_z_height
         self.initialized = False
-        self.bbox_min = None
-        self.bbox_max = None
-        self.bbox_corners = None
-        self.grid_shape = None
-        self.voxel_state = None       # uint8 grid: FREE / UNKNOWN / OCCUPIED
-        self.observed_mask = None     # bool grid: has this voxel ever been observed as surface?
+        
+    def initialize(self, points_world):
+        points_world = np.asarray(points_world)
+        self.bbox_min, self.bbox_max, self.bbox_corners = self._compute_bbox(points_world)
+        self.grid_shape = self._compute_grid_shape()
+
+        # 1. Allocate the dense 3D arrays
+        self.voxel_state = np.full(self.grid_shape, UNKNOWN, dtype=np.uint8)
+        self.observed_mask = np.zeros(self.grid_shape, dtype=bool)
+        self.initialized = True
+        self._update_outputs()
+        self._log_status('Initialized bbox from first object detection')
 
     def carve_with_depth_image(
         self,
@@ -106,6 +108,8 @@ class ExtrusionFusionReconstruction:
         far,
         position,
         quaternion,
+        floor_height,
+        height_threshold
     ):
         depth = np.asarray(depth, dtype=float)
         height, width = depth.shape
@@ -140,6 +144,10 @@ class ExtrusionFusionReconstruction:
         valid_measured_depth = valid_depth_mask[candidate_v, candidate_u]
 
         # 3. Evaluate carving rule
+
+        filtered_points = filter_by_height(depth, fov_degrees, far, position, quaternion, floor_height, height_threshold)
+        self.mark_observed_occupied(filtered_points)
+
         carve_free_space = np.where(
             valid_measured_depth,
             candidate_z < measured_depth,
@@ -148,14 +156,13 @@ class ExtrusionFusionReconstruction:
 
         remove_indices = candidate_indices[carve_free_space]
         
-        # 4. Update the dense grid directly (protecting observed surface)
         removed_count = 0
         for idx in remove_indices:
             cx, cy, cz = idx
-            # Only carve if it is not part of the protected observed surface
             if not self.observed_mask[cx, cy, cz]:
                 self.voxel_state[cx, cy, cz] = FREE
                 removed_count += 1
+        
 
         self._update_outputs()
 
@@ -200,33 +207,16 @@ class ExtrusionFusionReconstruction:
         surface[:, :, :-1] |= unknown[:, :, :-1] & free[:, :, 1:]
 
         return int(np.count_nonzero(surface))
-    
-    def initialize(self, points_world):
-        points_world = np.asarray(points_world)
-        self.bbox_min, self.bbox_max, self.bbox_corners = self._compute_bbox(points_world)
-        self.grid_shape = self._compute_grid_shape()
 
-        # 1. Allocate the dense 3D arrays
-        self.voxel_state = np.full(self.grid_shape, UNKNOWN, dtype=np.uint8)
-        self.observed_mask = np.zeros(self.grid_shape, dtype=bool)
-
-        # 2. Mark the observed surface points in the grid
-        observed_indices_unique = self._voxelize(points_world)
-        if len(observed_indices_unique) > 0:
-            self._mark_observed_occupied(observed_indices_unique)
-
-        self.initialized = True
-        self._update_outputs()
-        self._log_status('Initialized bbox from first object detection')
-
-    def _mark_observed_occupied(self, indices):
-        indices = np.asarray(indices, dtype=int)
+    def mark_observed_occupied(self, filtered_points):
+        indices = self._voxelize(filtered_points)
         ix = indices[:, 0]
         iy = indices[:, 1]
         iz = indices[:, 2]
 
         self.observed_mask[ix, iy, iz] = True
         self.voxel_state[ix, iy, iz] = OCCUPIED
+
 
     def _compute_bbox(self, points_world):
         bbox_min = points_world.min(axis=0).copy()

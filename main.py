@@ -37,7 +37,7 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 FLOOR_HEIGHT = 0.0
-OBJECT_HEIGHT_THRESHOLD = 1e-3
+OBJECT_HEIGHT_THRESHOLD = 1e-2
 VOXEL_SIZE = 0.005
 BBOX_MARGIN = 0.05
 
@@ -58,7 +58,7 @@ NBV_STABLE_FRAMES_REQUIRED = 1
 SEND_NBV_TO_UNITY = True
 PLOT_PATH = False  
 PLOT_VOXEL_CENTERS = True 
-PLOT_HISTORY = False
+PLOT_HISTORY = True
 PLOT_3D_PATHS = False
 SAVE_HISTORY_TO_EXCEL = False
 
@@ -119,6 +119,7 @@ def main():
         voxel_size=VOXEL_SIZE,
         bbox_margin=BBOX_MARGIN,
         floor_height=FLOOR_HEIGHT,
+        min_z_height=OBJECT_HEIGHT_THRESHOLD
     )
 
     try:
@@ -254,6 +255,8 @@ def main():
                 far=far,
                 position=position,
                 quaternion=quaternion,
+                floor_height=FLOOR_HEIGHT,
+                height_threshold=OBJECT_HEIGHT_THRESHOLD,
                 )
 
             detected_view_count += 1
