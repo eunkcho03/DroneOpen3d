@@ -1,5 +1,4 @@
 import numpy as np
-import cv2
 
 DEPTH_MIN_VALID = 0.0
 DEPTH_INVALID_VALUE = -1.0
@@ -56,7 +55,7 @@ def depth_to_camera_points(depth, fov_degrees, far, keep_invalid_depth=False):
     u, v = np.meshgrid(np.arange(width), np.arange(height))
     z = depth[valid_mask]
     x = (u[valid_mask] - cx) * z / fx
-    y = -(v[valid_mask] - cy) * z / fy
+    y = (v[valid_mask] - cy) * z / fy
 
     points_camera = np.column_stack((x, y, z))
     return points_camera, valid_mask
@@ -139,28 +138,6 @@ class DepthFrameProcessor:
 
 
 class ExtrusionFusionReconstruction:
-    """
-    Faster dense-grid version of your previous reconstruction.
-
-    Main change:
-        old: voxel_prob dict + occupied/free/unknown Python sets
-        new: voxel_state 3D NumPy array
-
-    State encoding:
-        FREE     = 0
-        UNKNOWN  = 1
-        OCCUPIED = 2
-
-    The public attributes are kept similar:
-        occupied_centers, unknown_centers, free_centers, observed_centers
-        occupied_volume, unknown_volume, free_volume, observed_volume
-        occupied_indices, unknown_indices, free_indices, observed_indices
-
-    Note:
-        *_indices are now NumPy arrays with shape (N, 3), not Python sets.
-        len(reconstruction.unknown_indices) still works.
-    """
-
     def __init__(
         self,
         voxel_size=0.01,
@@ -271,9 +248,6 @@ class ExtrusionFusionReconstruction:
         if not self.initialized or self.voxel_state is None:
             return self
 
-        if carve_margin is None:
-            carve_margin = 0.5 * self.voxel_size
-
         depth = np.asarray(depth, dtype=float)
         if depth.ndim != 2:
             return self
@@ -300,7 +274,7 @@ class ExtrusionFusionReconstruction:
 
         with np.errstate(divide="ignore", invalid="ignore"):
             u = np.round(x * fx / z + cx).astype(int)
-            v = np.round(cy - y * fy / z).astype(int)
+            v = np.round(y * fy / z + cy).astype(int)
 
         projects_inside_image = (
             (z > 0.0)
@@ -385,6 +359,35 @@ class ExtrusionFusionReconstruction:
         frontier[:, :, :-1] |= unknown[:, :, :-1] & free[:, :, 1:]
 
         return np.argwhere(frontier)
+
+    def count_occupied_surface_voxels(self):
+        """
+        Count OCCUPIED voxels that touch FREE space in a 6-neighborhood.
+        """
+        if not self.initialized or self.voxel_state is None:
+            return 0
+
+        occupied = self.voxel_state == OCCUPIED
+        free = self.voxel_state == FREE
+
+        if not np.any(occupied) or not np.any(free):
+            return 0
+
+        surface = np.zeros(self.grid_shape, dtype=bool)
+
+        # Neighbour in +/- x
+        surface[1:, :, :] |= occupied[1:, :, :] & free[:-1, :, :]
+        surface[:-1, :, :] |= occupied[:-1, :, :] & free[1:, :, :]
+
+        # Neighbour in +/- y
+        surface[:, 1:, :] |= occupied[:, 1:, :] & free[:, :-1, :]
+        surface[:, :-1, :] |= occupied[:, :-1, :] & free[:, 1:, :]
+
+        # Neighbour in +/- z
+        surface[:, :, 1:] |= occupied[:, :, 1:] & free[:, :, :-1]
+        surface[:, :, :-1] |= occupied[:, :, :-1] & free[:, :, 1:]
+
+        return int(np.count_nonzero(surface))
 
     def count_unknown_surface_voxels(self):
         if not self.initialized or self.voxel_state is None:

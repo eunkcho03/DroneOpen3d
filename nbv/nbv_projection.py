@@ -234,7 +234,7 @@ def compute_surface_projection_gain(
     else:
         gain_ratio = visible_unknown / visible_total
 
-    gain_score = visible_unknown * gain_ratio
+    gain_score = visible_unknown 
 
     return {
         "gain_ratio": float(gain_ratio),

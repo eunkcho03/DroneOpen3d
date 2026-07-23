@@ -146,6 +146,7 @@ def plot_all_nbv_positions_3d(
     nbv_waypoints,
     elevation=25,
     azimuth=-55,
+    output_file_path=None,
 ):
     inflated_min, inflated_max = inflate_bbox(
         bbox_min,
@@ -289,5 +290,13 @@ def plot_all_nbv_positions_3d(
     ax.legend(loc="best")
 
     plt.tight_layout()
-    plt.show()
 
+    if output_file_path is not None:
+        plt.savefig(
+            output_file_path,
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()
+    else:
+        plt.show()

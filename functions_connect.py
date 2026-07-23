@@ -3,8 +3,6 @@ import socket
 import struct
 import numpy as np
 
-FLIP_DEPTH_VERTICAL = True
-
 def recv_exact(sock, n_bytes):
     data = b""
 
@@ -50,9 +48,6 @@ def receive_depth(conn, width, height):
 
     depth = np.frombuffer(depth_bytes, dtype=np.float32)
     depth = depth.reshape((height, width))
-
-    if FLIP_DEPTH_VERTICAL:
-        depth = np.flipud(depth)
 
     return depth
 

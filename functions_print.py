@@ -333,3 +333,142 @@ def save_volume_history_to_excel(
         "True Unity Volume": true_volumes,
     })
     df.to_excel(output_file_path, index=False)
+    
+
+def plot_nbv_evaluation_history(
+    view_numbers,
+    nbv_gains,
+    nbv_distances,
+    estimated_volumes,
+    true_volumes,
+    output_file_path = None,
+):
+
+    #view_numbers = np.asarray(view_numbers, dtype=int)
+    #nbv_gains = np.asarray(nbv_gains, dtype=float)
+    #nbv_distances = np.asarray(nbv_distances, dtype=float)
+    estimated_volumes = np.asarray(estimated_volumes, dtype=float)
+    true_volumes = np.asarray(true_volumes, dtype=float)
+
+
+    nbv_gains = np.insert(nbv_gains, 0, 0.0)
+    nbv_distances = np.insert(nbv_distances, 0, 0.0)
+    gd_views = np.insert(view_numbers, 0, 0)
+    
+    cumulative_gains = np.cumsum(nbv_gains)
+    cumulative_distances = np.cumsum(nbv_distances)
+
+    volume_error_percent = (
+        np.abs(estimated_volumes - true_volumes)
+        / true_volumes
+        * 100.0
+    )
+
+    fig, axes = plt.subplots(
+        3,
+        1,
+        figsize=(8, 10),
+        sharex=True,
+    )
+
+    ax_gain = axes[0]
+
+    ax_gain.bar(
+        gd_views,
+        nbv_gains,
+        alpha=0.45,
+        label="Gain from current view",
+    )
+
+    ax_gain.plot(
+        gd_views,
+        cumulative_gains,
+        marker="o",
+        linewidth=2,
+        label="Cumulative gain",
+    )
+
+    ax_gain.set_title("Information Gain")
+    ax_gain.set_ylabel("Gain")
+    ax_gain.grid(True, alpha=0.3)
+    ax_gain.legend()
+
+    # ---------------------------------------------------------
+    # Distance
+    # ---------------------------------------------------------
+    ax_distance = axes[1]
+
+    ax_distance.bar(
+        gd_views,
+        nbv_distances,
+        alpha=0.45,
+        label="Distance to current view",
+    )
+
+    ax_distance.plot(
+        gd_views,
+        cumulative_distances,
+        marker="s",
+        linewidth=2,
+        label="Cumulative distance",
+    )
+
+    ax_distance.set_title("Travel Distance")
+    ax_distance.set_ylabel("Distance [m]")
+    ax_distance.grid(True, alpha=0.3)
+    ax_distance.legend()
+
+    # ---------------------------------------------------------
+    # Volume
+    # ---------------------------------------------------------
+    ax_volume = axes[2]
+
+    ax_volume.plot(
+        view_numbers,
+        estimated_volumes,
+        marker="o",
+        linewidth=2,
+        label="Estimated occupied + unknown volume",
+    )
+
+    ax_volume.plot(
+        view_numbers,
+        true_volumes,
+        linestyle="--",
+        linewidth=2,
+        label="True Unity volume",
+    )
+
+    final_error = volume_error_percent[-1]
+
+    ax_volume.annotate(
+        f"Final error = {final_error:.2f}%",
+        xy=(view_numbers[-1], estimated_volumes[-1]),
+        xytext=(8, 10),
+        textcoords="offset points",
+    )
+
+    ax_volume.set_title("Estimated Volume Convergence")
+    ax_volume.set_xlabel("Object view number")
+    ax_volume.set_ylabel("Volume [m³]")
+    ax_volume.grid(True, alpha=0.3)
+    ax_volume.legend()
+
+    for ax in axes:
+        ax.set_xticks(view_numbers)
+
+    #fig.suptitle(
+    #    f"Path-Planning Evaluation: {planner_name}",
+    #    fontsize=15,
+    #)
+
+    plt.tight_layout()
+    if output_file_path is not None:
+        plt.savefig(
+            output_file_path,
+            dpi=300,
+            bbox_inches="tight",
+        )
+        plt.close()
+    else:
+        plt.show()
