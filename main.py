@@ -21,10 +21,8 @@ from functions_connect import (
     connect_to_unity_nbv,
 )
 
-from functions_compute import (
-    filter_by_height,
-    ExtrusionFusionReconstruction,
-)
+from functions_compute import ExtrusionFusionReconstruction
+from functions_camera import  filter_by_height
 
 from nbv.nbv_candidate_generation import generate_candidate_views_from_bbox
 from nbv.nbv_planning import compute_next_best_view
@@ -50,7 +48,6 @@ NBV_SAVE_DEBUG_IMAGES = False
 NBV_OUTPUT_FOLDER = "potential_views_debug"
 NBV_PROJECTION_WIDTH = 160
 NBV_PROJECTION_HEIGHT = 160
-NBV_ASPECT_RATIO = 16.0 / 9.0
 NBV_USE_DISTANCE_PENALTY = False
 NBV_POSITION_TOLERANCE = 0.03
 NBV_STABLE_FRAMES_REQUIRED = 1
@@ -64,14 +61,9 @@ SAVE_HISTORY_TO_EXCEL = False
 
 
 def is_drone_at_target(current_position, target_position, tolerance):
-    current_position = np.asarray(current_position, dtype=float)
-    target_position = np.asarray(target_position, dtype=float)
-
     distance = np.linalg.norm(current_position - target_position)
-
     return distance <= tolerance, distance
 
-# Early stopping
 UNKNOWN_SURFACE_RATIO_THRESHOLD = 0.03
 VOLUME_CHANGE_THRESHOLD = 0.03
 VOLUME_STABLE_LIMIT = 2
@@ -124,60 +116,16 @@ def main():
 
     try:
         while True:
-            header_data = receive_header(depth_conn)
+            width, height, fov, near, far, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, true_volume = receive_header(depth_conn)
 
-            if header_data is None:
-                break
-
-            (
-                width,
-                height,
-                fov,
-                near,
-                far,
-                pos_x,
-                pos_y,
-                pos_z,
-                rot_x,
-                rot_y,
-                rot_z,
-                rot_w,
-                true_volume,
-            ) = header_data
-
-            depth = receive_depth(
-                depth_conn,
-                width,
-                height,
-            )
-
+            depth = receive_depth(depth_conn, width, height)
             if depth is None:
                 break
-
             position = (pos_x, pos_y, pos_z)
             quaternion = (rot_x, rot_y, rot_z, rot_w)
-
-            current_position_np = np.asarray(
-                position,
-                dtype=float,
-            )
-
-            current_aspect_ratio = (
-                float(width) / float(height)
-                if height > 0
-                else NBV_ASPECT_RATIO
-            )
-
-            print_depth_info(
-                depth,
-                width,
-                height,
-                fov,
-                near,
-                far,
-                position,
-                quaternion,
-            )
+            current_position_np = np.asarray(position, dtype=float)
+            current_aspect_ratio = float(width) / float(height)
+            print_depth_info(depth, width, height, fov, near, far, position, quaternion)
             
             if not recon.initialized:
                 filtered_points = filter_by_height(
@@ -195,59 +143,31 @@ def main():
                 recon.initialize(filtered_points)                
                 
 
-            # --------------------------------------------------
-            # Wait until the drone reaches the previous NBV
-            # --------------------------------------------------
             if waiting_for_nbv_move:
-                arrived, distance_to_target = is_drone_at_target(
-                    current_position=current_position_np,
-                    target_position=pending_nbv_position,
-                    tolerance=NBV_POSITION_TOLERANCE,
-                )
-
-                print(
-                    "Waiting for drone to reach NBV target... "
-                    f"distance = {distance_to_target:.4f} m"
-                )
-
+                arrived = np.linalg.norm(current_position_np - pending_nbv_position) <= NBV_POSITION_TOLERANCE
+                print("Waiting for drone to reach NBV target... ")
                 if not arrived:
                     stable_target_frame_count = 0
-
-                    print(
-                        "Drone still moving. "
-                        "Skipping reconstruction update."
-                    )
-
+                    print("Drone still moving. ")
                     frame_count += 1
                     continue
 
                 stable_target_frame_count += 1
 
-                print(
-                    "Drone is near target. Stable frame "
+                print("Drone is near target. Stable frame "
                     f"{stable_target_frame_count}/"
                     f"{NBV_STABLE_FRAMES_REQUIRED}"
                 )
 
-                if (
-                    stable_target_frame_count
-                    < NBV_STABLE_FRAMES_REQUIRED
-                ):
+                if stable_target_frame_count < NBV_STABLE_FRAMES_REQUIRED:
                     frame_count += 1
                     continue
-
-                print(
-                    "Drone reached NBV target. "
-                    "Reconstruction update enabled."
-                )
-
+                print("Drone reached NBV target. ")
+                
                 waiting_for_nbv_move = False
                 pending_nbv_position = None
                 stable_target_frame_count = 0
 
-            # --------------------------------------------------
-            # Reconstruction update
-            # --------------------------------------------------
 
             recon.carve_with_depth_image(
                 depth=depth,
@@ -280,56 +200,16 @@ def main():
                     ),
                 )
 
-            # --------------------------------------------------
-            # Volume history
-            # --------------------------------------------------
-            total_unknown_occupied_volume = (
-                recon.occupied_volume
-                + recon.unknown_volume
-            )
-
-            volume_view_numbers.append(
-                detected_view_count
-            )
-
-            total_unknown_occupied_volume_history.append(
-                total_unknown_occupied_volume
-            )
-
-            true_volume_for_total_history.append(
-                true_volume
-            )
-
-            print(
-                f"Volume summary | "
-                f"occupied: {recon.occupied_volume:.6f} m³ | "
-                f"unknown: {recon.unknown_volume:.6f} m³ | "
-                f"occupied + unknown: "
-                f"{total_unknown_occupied_volume:.6f} m³ | "
-                f"true Unity volume: {true_volume:.6f} m³"
-            )
-
-            # --------------------------------------------------
-            # Volume stability
-            # --------------------------------------------------
+            total_unknown_occupied_volume = recon.occupied_volume + recon.unknown_volume
+            volume_view_numbers.append(detected_view_count)
+            total_unknown_occupied_volume_history.append(total_unknown_occupied_volume)
+            true_volume_for_total_history.append(true_volume)
             relative_change = None
 
             if previous_volume_estimate is not None:
-                relative_change = (
-                    abs(
-                        total_unknown_occupied_volume
-                        - previous_volume_estimate
-                    )
-                    / max(
-                        abs(previous_volume_estimate),
-                        1e-12,
-                    )
-                )
+                relative_change = abs(total_unknown_occupied_volume - previous_volume_estimate) / max(abs(previous_volume_estimate), 1e-12)
 
-                if (
-                    relative_change
-                    < VOLUME_CHANGE_THRESHOLD
-                ):
+                if relative_change < VOLUME_CHANGE_THRESHOLD:
                     stable_volume_count += 1
                 else:
                     stable_volume_count = 0
@@ -342,52 +222,23 @@ def main():
                     f"{VOLUME_STABLE_LIMIT}"
                 )
 
-            previous_volume_estimate = (
-                total_unknown_occupied_volume
-            )
+            previous_volume_estimate = total_unknown_occupied_volume
 
-            volume_stable = (
-                stable_volume_count
-                >= VOLUME_STABLE_LIMIT
-            )
+            volume_stable = stable_volume_count >= VOLUME_STABLE_LIMIT
 
             # --------------------------------------------------
             # Surface-completeness stopping criterion
             # --------------------------------------------------
-            unknown_surface_count = (
-                recon.count_unknown_surface_voxels()
-            )
+            unknown_surface_idx, occupied_surface_idx = recon.surface_data()
+            unknown_surface_count = len(unknown_surface_idx)
+            occupied_surface_count = len(occupied_surface_idx)
+            total_surface_count = unknown_surface_count + occupied_surface_count
+            unknown_surface_ratio = unknown_surface_count / max(total_surface_count, 1)
+            unknown_surface_counts.append(unknown_surface_count)
 
-            occupied_surface_count = (
-                recon.count_occupied_surface_voxels()
-            )
 
-            total_surface_count = (
-                unknown_surface_count
-                + occupied_surface_count
-            )
-
-            unknown_surface_ratio = (
-                unknown_surface_count
-                / max(total_surface_count, 1)
-            )
-
-            unknown_surface_counts.append(
-                unknown_surface_count
-            )
-
-            unknown_surface_ratio_history.append(
-                unknown_surface_ratio
-            )
-
-            surface_complete = (
-                unknown_surface_ratio
-                < UNKNOWN_SURFACE_RATIO_THRESHOLD
-            )
-
-            no_unknown_surface = (
-                unknown_surface_count == 0
-            )
+            unknown_surface_ratio_history.append(unknown_surface_ratio)
+            surface_complete = (unknown_surface_ratio < UNKNOWN_SURFACE_RATIO_THRESHOLD)
 
             print(
                 f"Surface summary | "
@@ -407,17 +258,8 @@ def main():
                 f"volume stable: {volume_stable}"
             )
 
-            should_stop = (
-                    volume_stable or surface_complete
-            )
-
+            should_stop = volume_stable or surface_complete
             stop_reason = None
-
-            # --------------------------------------------------
-            # NBV selection
-            # Compute final NBV for evaluation, but do not send it
-            # when should_stop is True.
-            # --------------------------------------------------
             best_view = None
             best_score = None
             path_to_best_view = None
@@ -697,9 +539,7 @@ def main():
 
                 break
 
-            # --------------------------------------------------
-            # Send the next NBV only if reconstruction continues
-            # --------------------------------------------------
+
             if best_view is not None:
                 visited_view_ids.add(
                     best_view["view_id"]

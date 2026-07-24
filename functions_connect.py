@@ -29,7 +29,6 @@ def create_server(host, port):
     return server, conn
 
 
-
 def receive_header(conn):
     header = recv_exact(conn, 52)
 
@@ -75,7 +74,6 @@ def send_next_view(nbv_sock, best_view, best_score):
         "score": float(best_score),
     }
 
-    # Unity NBVReceiver expects newline-ended JSON text.
     payload = json.dumps(msg) + "\n"
 
     nbv_sock.sendall(payload.encode("utf-8"))

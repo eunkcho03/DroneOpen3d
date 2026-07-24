@@ -1,79 +1,11 @@
 import numpy as np
-
-DEPTH_MIN_VALID = 0.0
-DEPTH_INVALID_VALUE = -1.0
-FAR_PLANE_MARGIN = 0.01
+import numba 
+from functions_camera import camera_intrinsics, make_valid_depth_mask, world_to_camera, filter_by_height
 
 # Dense voxel-state values
 FREE = 0
 UNKNOWN = 1
 OCCUPIED = 2
-
-def make_valid_depth_mask(depth, far):
-    depth = np.asarray(depth)
-    return (
-        np.isfinite(depth)
-        & (depth > DEPTH_MIN_VALID)
-        & (depth != DEPTH_INVALID_VALUE)
-        & (depth < far - FAR_PLANE_MARGIN)
-    )
-
-
-def camera_intrinsics(width, height, fov_degrees):
-    fy = height / (2.0 * np.tan(np.deg2rad(fov_degrees) / 2.0))
-    fx = fy
-    cx = (width - 1) / 2.0
-    cy = (height - 1) / 2.0
-    return fx, fy, cx, cy
-
-
-def quaternion_to_rotation_matrix(qx, qy, qz, qw):
-    q = np.array([qx, qy, qz, qw], dtype=np.float64)
-    norm = np.linalg.norm(q)
-    if norm < 1e-12:
-        return np.eye(3)
-
-    x, y, z, w = q / norm
-    return np.array([
-        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w),     2 * (x * z + y * w)],
-        [2 * (x * y + z * w),     1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-        [2 * (x * z - y * w),     2 * (y * z + x * w),     1 - 2 * (x * x + y * y)],
-    ])
-
-
-def depth_to_camera_points(depth, fov_degrees, far):
-    depth = np.asarray(depth, dtype=float)
-    height, width = depth.shape
-    fx, fy, cx, cy = camera_intrinsics(width, height, fov_degrees)
-    valid_mask = make_valid_depth_mask(depth, far)
-
-    u, v = np.meshgrid(np.arange(width), np.arange(height))
-    z = depth[valid_mask]
-    x = (u[valid_mask] - cx) * z / fx
-    y = (v[valid_mask] - cy) * z / fy
-
-    points_camera = np.column_stack((x, y, z))
-    return points_camera
-
-
-def camera_to_world(points_camera, position, quaternion):
-    points_camera = np.asarray(points_camera, dtype=float)
-    R = quaternion_to_rotation_matrix(*quaternion)
-    position = np.asarray(position, dtype=float)
-    return points_camera @ R.T + position
-
-def world_to_camera(points_world, position, quaternion):
-    points_world = np.asarray(points_world, dtype=float)
-    R = quaternion_to_rotation_matrix(*quaternion)
-    position = np.asarray(position, dtype=float)
-    return (points_world - position) @ R
-
-def filter_by_height(depth, fov_degrees, far, position, quaternion, floor_height, height_threshold):
-    points_camera = depth_to_camera_points(depth, fov_degrees, far)
-    points_world = camera_to_world(points_camera, position, quaternion)
-    min_height = floor_height + height_threshold 
-    return points_world[points_world[:, 1] > min_height ]
-
 
 class ExtrusionFusionReconstruction:
     def __init__(
@@ -93,8 +25,6 @@ class ExtrusionFusionReconstruction:
         points_world = np.asarray(points_world)
         self.bbox_min, self.bbox_max, self.bbox_corners = self._compute_bbox(points_world)
         self.grid_shape = self._compute_grid_shape()
-
-        # 1. Allocate the dense 3D arrays
         self.voxel_state = np.full(self.grid_shape, UNKNOWN, dtype=np.uint8)
         self.observed_mask = np.zeros(self.grid_shape, dtype=bool)
         self.initialized = True
@@ -163,50 +93,10 @@ class ExtrusionFusionReconstruction:
                 self.voxel_state[cx, cy, cz] = FREE
                 removed_count += 1
         
-
         self._update_outputs()
-
-        print(
-            f"Depth carving | projected voxels: {len(candidate_indices)} | "
-            f"removed: {removed_count} | volume: {self.occupied_volume:.6f} m³"
-        )
+        self._log_status('depth_carving')
 
         return self
-
-    def count_occupied_surface_voxels(self):
-        occupied = self.voxel_state == OCCUPIED
-        free = self.voxel_state == FREE
-        surface = np.zeros(self.grid_shape, dtype=bool)
-
-        # Neighbour in +/- x
-        surface[1:, :, :] |= occupied[1:, :, :] & free[:-1, :, :]
-        surface[:-1, :, :] |= occupied[:-1, :, :] & free[1:, :, :]
-
-        # Neighbour in +/- y
-        surface[:, 1:, :] |= occupied[:, 1:, :] & free[:, :-1, :]
-        surface[:, :-1, :] |= occupied[:, :-1, :] & free[:, 1:, :]
-
-        # Neighbour in +/- z
-        surface[:, :, 1:] |= occupied[:, :, 1:] & free[:, :, :-1]
-        surface[:, :, :-1] |= occupied[:, :, :-1] & free[:, :, 1:]
-
-        return int(np.count_nonzero(surface))
-
-    def count_unknown_surface_voxels(self):
-        unknown = self.voxel_state == UNKNOWN
-        free = self.voxel_state == FREE
-        surface = np.zeros(self.grid_shape, dtype=bool)
-
-        surface[1:, :, :] |= unknown[1:, :, :] & free[:-1, :, :]
-        surface[:-1, :, :] |= unknown[:-1, :, :] & free[1:, :, :]
-
-        surface[:, 1:, :] |= unknown[:, 1:, :] & free[:, :-1, :]
-        surface[:, :-1, :] |= unknown[:, :-1, :] & free[:, 1:, :]
-
-        surface[:, :, 1:] |= unknown[:, :, 1:] & free[:, :, :-1]
-        surface[:, :, :-1] |= unknown[:, :, :-1] & free[:, :, 1:]
-
-        return int(np.count_nonzero(surface))
 
     def mark_observed_occupied(self, filtered_points):
         indices = self._voxelize(filtered_points)
@@ -244,8 +134,7 @@ class ExtrusionFusionReconstruction:
 
     def _compute_grid_shape(self):
         return np.maximum(
-            np.ceil((self.bbox_max - self.bbox_min) / self.voxel_size).astype(int),
-            1,
+            np.ceil((self.bbox_max - self.bbox_min) / self.voxel_size).astype(int), 1,
         )
 
     def _voxelize(self, points_world):
@@ -287,10 +176,50 @@ class ExtrusionFusionReconstruction:
             f"occupied: {occupied_count} | "
             f"unknown: {unknown_count} | "
             f"free: {free_count} | "
-            f"occupied volume: {self.occupied_volume:.6f} m³"
+            f"occupied + unknown volume: {self.occupied_volume+ self.unknown_volume:.6f} m³"
         )
 
         if new_observed is not None:
             message += f" | new observed: {new_observed}"
 
         print(message)
+    
+    def surface_data(self):
+        unknown_list, occupied_list = get_surface_data_numba(self.voxel_state, FREE, UNKNOWN, OCCUPIED)
+        unknown_indices = np.array(unknown_list, dtype=np.int32)
+        occupied_indices = np.array(occupied_list, dtype=np.int32)
+        #self._surface_debugging(unknown_indices, occupied_indices)
+        return unknown_indices, occupied_indices
+
+    def _surface_debugging(self, unknown_indices, occupied_indices):
+        self.occupied_surface_centers = self._indices_to_centers_from_array(occupied_indices)
+        self.unknown_surface_centers = self._indices_to_centers_from_array(unknown_indices)
+
+@numba.njit(fastmath=True)
+def get_surface_data_numba(voxel_state, FREE, UNKNOWN, OCCUPIED):
+    nx, ny, nz = voxel_state.shape
+    unknown_list = numba.typed.List()
+    occupied_list = numba.typed.List()
+
+    for x in range(nx):
+        for y in range(ny):
+            for z in range(nz):
+                state = voxel_state[x, y, z]
+
+                if state == FREE:
+                    continue
+
+                if (
+                    (x > 0 and voxel_state[x - 1, y, z] == FREE)
+                    or (x < nx - 1 and voxel_state[x + 1, y, z] == FREE)
+                    or (y > 0 and voxel_state[x, y - 1, z] == FREE)
+                    or (y < ny - 1 and voxel_state[x, y + 1, z] == FREE)
+                    or (z > 0 and voxel_state[x, y, z - 1] == FREE)
+                    or (z < nz - 1 and voxel_state[x, y, z + 1] == FREE)
+                ):
+                    coord = (x, y, z)
+                    if state == UNKNOWN:
+                        unknown_list.append(coord)
+                    elif state == OCCUPIED:
+                        occupied_list.append(coord)
+    return unknown_list, occupied_list

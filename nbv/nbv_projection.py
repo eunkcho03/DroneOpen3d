@@ -1,6 +1,6 @@
 import numpy as np
 
-from nbv.nbv_utils import as_points_array, normalize_vector
+from nbv.nbv_utils import normalize_vector
 
 
 def compute_camera_basis(
@@ -45,7 +45,7 @@ def world_points_to_camera(points, camera_position, look_at):
     Transform world points into candidate camera coordinates.
     """
 
-    points = as_points_array(points)
+    points = np.asarray(points)
     camera_position = np.asarray(camera_position, dtype=float)
 
     right, up, forward = compute_camera_basis(
@@ -79,7 +79,7 @@ def project_points_to_image(
         pixel_u, pixel_v, depth_z, valid_mask
     """
 
-    points = as_points_array(points)
+    points = np.asarray(points)
 
     if len(points) == 0:
         return (
@@ -140,34 +140,6 @@ def compute_surface_projection_gain(
     image_height=160,
     aspect_ratio=16.0 / 9.0,
 ):
-    """
-    Compute NBV gain using visible surface voxels only.
-
-    Unknown surface voxels and occupied surface voxels are projected into
-    the candidate camera image. A z-buffer keeps only the nearest surface
-    voxel per projected pixel.
-
-    Score:
-        visible_unknown_area * gain_ratio
-
-    where:
-        gain_ratio = visible_unknown_area / visible_total_surface_area
-    """
-
-    occupied_surface_voxels = as_points_array(occupied_surface_voxels)
-    unknown_surface_voxels = as_points_array(unknown_surface_voxels)
-
-    if len(occupied_surface_voxels) == 0 and len(unknown_surface_voxels) == 0:
-        return {
-            "gain_ratio": 0.0,
-            "gain_score": 0.0,
-            "visible_unknown_surface_pixels": 0,
-            "visible_known_surface_pixels": 0,
-            "visible_total_surface_pixels": 0,
-            "unknown_surface_in_fov": 0,
-            "known_surface_in_fov": 0,
-        }
-
     all_points = []
     labels = []
 

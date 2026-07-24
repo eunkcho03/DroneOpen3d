@@ -85,23 +85,3 @@ def look_at_quaternion(
 
     return rotation_matrix_to_quaternion(R)
 
-
-def as_points_array(points):
-    points = np.asarray(points, dtype=float)
-
-    if points.size == 0:
-        return points.reshape(0, 3)
-
-    if points.ndim == 1:
-        if points.shape[0] != 3:
-            raise ValueError(f"Expected a 3D point, got shape {points.shape}")
-        return points.reshape(1, 3)
-
-    if points.ndim != 2 or points.shape[1] != 3:
-        raise ValueError(f"Expected an (N, 3) array, got shape {points.shape}")
-
-    return points
-
-
-# Backward-compatible private alias, in case older code imports it.
-_as_points_array = as_points_array

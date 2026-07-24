@@ -11,7 +11,6 @@ def inflate_bbox(bbox_min, bbox_max, fac):
     inflated_half_size = fac * half_size
     return center - inflated_half_size, center + inflated_half_size
 
-
 def unpack_2d_points(p1, p2):
     x1, z1 = p1
     x2, z2 = p2
@@ -141,9 +140,6 @@ def plot_inflated_bbox_path(
     total_distance=None,
     show_direct_path=True,
 ):
-    """
-    Plot the planned path in the horizontal X-Z plane.
-    """
     start_position = np.asarray(start_position, dtype=float)
     end_position = np.asarray(end_position, dtype=float)
     bbox_min = np.asarray(bbox_min, dtype=float)

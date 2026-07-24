@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from functions_compute import make_valid_depth_mask
+from functions_camera import make_valid_depth_mask
 
 DEPTH_MIN_VALID = 0.0
 DEPTH_INVALID_VALUE = -1.0
@@ -181,7 +181,6 @@ def plot_unknown_surface_voxel_history(view_numbers, unknown_surface_counts):
     
 
 def plot_total_unknown_occupied_vs_true_volume(view_numbers, total_unknown_occupied_volumes, true_volumes):
-
     plt.figure(figsize=(7, 4))
     plt.plot(
         view_numbers, total_unknown_occupied_volumes,

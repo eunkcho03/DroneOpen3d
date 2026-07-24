@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from nbv.nbv_utils import as_points_array
 
 
 def compute_matplotlib_view_angles(camera_position, look_at):
@@ -23,7 +22,7 @@ def compute_matplotlib_view_angles(camera_position, look_at):
 
 
 def compute_equal_axis_limits(points, zoom_margin=0.08):
-    points = as_points_array(points)
+    points = np.asarray(points)
 
     if len(points) == 0:
         return (-1, 1), (-1, 1), (-1, 1)
@@ -67,8 +66,8 @@ def render_candidate_view_figure(
     This should not be used for NBV scoring anymore.
     """
 
-    occupied_voxels = as_points_array(occupied_voxels)
-    unknown_voxels = as_points_array(unknown_voxels)
+    occupied_voxels = np.asarray(occupied_voxels)
+    unknown_voxels = np.asarray(unknown_voxels)
     camera_position = np.asarray(camera_position, dtype=float)
     look_at = np.asarray(look_at, dtype=float)
 

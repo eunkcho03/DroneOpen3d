@@ -1,8 +1,7 @@
 import os
 import numpy as np
 
-from nbv.nbv_utils import as_points_array, look_at_quaternion
-from nbv.nbv_surface import estimate_voxel_size_from_points, extract_surface_voxels
+from nbv.nbv_utils import look_at_quaternion
 from nbv.nbv_projection import compute_surface_projection_gain
 from nbv.nbv_debug_rendering import render_candidate_view_figure
 from nbv.nbv_distance import inflated_bbox_shortest_path_distance, plot_inflated_bbox_path
@@ -29,65 +28,11 @@ def compute_next_best_view(
     print_scores=True,
     plot_path=False,
 ):
-
-    if occupied_voxels is None:
-        occupied_voxels = np.empty((0, 3))
-
-    if unknown_voxels is None:
-        unknown_voxels = np.empty((0, 3))
-
-    occupied_voxels = as_points_array(occupied_voxels)
-    unknown_voxels = as_points_array(unknown_voxels)
-    object_center = np.asarray(object_center, dtype=float)
-
-    if current_camera_position is not None:
-        current_camera_position = np.asarray(current_camera_position, dtype=float)
-
     if visited_view_ids is None:
         visited_view_ids = set()
     else:
         visited_view_ids = set(visited_view_ids)
-
-    if len(unknown_voxels) == 0:
-        print("No unknown voxels left. NBV not needed.")
-        return None, 0.0
-
-    if voxel_size is None:
-        if len(occupied_voxels) > 0 and len(unknown_voxels) > 0:
-            voxel_size = estimate_voxel_size_from_points(
-                np.vstack([occupied_voxels, unknown_voxels])
-            )
-        elif len(unknown_voxels) > 0:
-            voxel_size = estimate_voxel_size_from_points(unknown_voxels)
-        else:
-            voxel_size = estimate_voxel_size_from_points(occupied_voxels)
-
-    # Use shared origin so occupied and unknown voxel grids align.
-    if len(occupied_voxels) > 0 and len(unknown_voxels) > 0:
-        grid_origin = np.vstack([occupied_voxels, unknown_voxels]).min(axis=0)
-    elif len(unknown_voxels) > 0:
-        grid_origin = unknown_voxels.min(axis=0)
-    elif len(occupied_voxels) > 0:
-        grid_origin = occupied_voxels.min(axis=0)
-    else:
-        grid_origin = np.zeros(3)
-
-    occupied_surface_voxels = extract_surface_voxels(
-        occupied_voxels,
-        voxel_size=voxel_size,
-        origin=grid_origin,
-    )
-
-    unknown_surface_voxels = extract_surface_voxels(
-        unknown_voxels,
-        voxel_size=voxel_size,
-        origin=grid_origin,
-    )
-
-    if len(unknown_surface_voxels) == 0:
-        print("No unknown surface voxels left. NBV not needed.")
-        return None, 0.0
-
+    
     if save_debug_images:
         os.makedirs(output_folder, exist_ok=True)
 
