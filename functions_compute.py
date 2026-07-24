@@ -23,7 +23,7 @@ class ExtrusionFusionReconstruction:
         
     def initialize(self, points_world):
         points_world = np.asarray(points_world)
-        self.bbox_min, self.bbox_max, self.bbox_corners = self._compute_bbox(points_world)
+        self.bbox_min, self.bbox_max, self.bbox_corners, self.bbox_center = self._compute_bbox(points_world)
         self.grid_shape = self._compute_grid_shape()
         self.voxel_state = np.full(self.grid_shape, UNKNOWN, dtype=np.uint8)
         self.observed_mask = np.zeros(self.grid_shape, dtype=bool)
@@ -129,8 +129,10 @@ class ExtrusionFusionReconstruction:
             [mx_x, mx_y, mx_z],
             [mn_x, mx_y, mx_z],
         ])
+        
+        center = 0.5 * (bbox_min + bbox_max)
 
-        return bbox_min, bbox_max, corners
+        return bbox_min, bbox_max, corners, center
 
     def _compute_grid_shape(self):
         return np.maximum(

@@ -53,7 +53,6 @@ def camera_to_world(points_camera, position, quaternion):
     position = np.asarray(position, dtype=float)
     return points_camera @ R.T + position
 
-
 def world_to_camera(points_world, position, quaternion):
     points_world = np.asarray(points_world, dtype=float)
     R = quaternion_to_rotation_matrix(*quaternion)
