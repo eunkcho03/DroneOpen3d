@@ -56,26 +56,27 @@ def connect_to_unity_nbv(host, port):
     print("Connected to Unity NBV receiver")
     return sock
 
-def send_next_view(nbv_sock, best_view, best_score):
+def send_next_view(nbv_sock, best_view):
+    q = best_view["quat"]
+    pos = best_view["pos"]
+
     msg = {
         "type": "next_view",
         "view_id": int(best_view["view_id"]),
-        "angle_deg": float(best_view["angle_deg"]),
         "position": {
-            "x": float(best_view["position"][0]),
-            "y": float(best_view["position"][1]),
-            "z": float(best_view["position"][2]),
+            "x": float(pos[0]),
+            "y": float(pos[1]),
+            "z": float(pos[2]),
         },
-        "look_at": {
-            "x": float(best_view["look_at"][0]),
-            "y": float(best_view["look_at"][1]),
-            "z": float(best_view["look_at"][2]),
+        "rotation": {
+            "x": float(q[0]),
+            "y": float(q[1]),
+            "z": float(q[2]),
+            "w": float(q[3]),
         },
-        "score": float(best_score),
     }
 
     payload = json.dumps(msg) + "\n"
-
     nbv_sock.sendall(payload.encode("utf-8"))
 
     print("Sent NBV to Unity:", msg)

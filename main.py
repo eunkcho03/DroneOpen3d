@@ -1,18 +1,8 @@
 import numpy as np
 import os
-from backup.nbv_functions import compute_next_best_view
-from functions_print import (
-    plot_voxel_centers_3d,
-    print_depth_info,
-    plot_unknown_surface_voxel_history,
-    plot_total_unknown_occupied_vs_true_volume,
-    plot_cum_nbv_gain_distance_history_one,
-    plot_cum_nbv_gain_distance_history_sbs,
-    save_nbv_history_to_excel,
-    save_volume_history_to_excel,
-    plot_nbv_evaluation_history,
-)
-
+from nbv.nbv_main import NextBestViewPlanner, CameraIntrinsics
+from functions_compute import ExtrusionFusionReconstruction
+from functions_camera import  filter_by_height
 from functions_connect import (
     create_server,
     receive_header,
@@ -20,167 +10,115 @@ from functions_connect import (
     send_next_view,
     connect_to_unity_nbv,
 )
+from functions_print import plot_voxel_centers_3d, plot_nbv_evaluation_history
 
-from functions_compute import ExtrusionFusionReconstruction
-from functions_camera import  filter_by_height
-
-from nbv.nbv_candidate_generation import generate_candidate_views_from_bbox
-from nbv.nbv_planning import compute_next_best_view
-from path_plotting import plot_all_nbv_positions_3d
-
-
+# Unity connection
 HOST = "127.0.0.1"
 DEPTH_PORT = 9010
 NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
-FLOOR_HEIGHT = 0.0
-OBJECT_HEIGHT_THRESHOLD = 1e-2
+# input
 VOXEL_SIZE = 0.005
 BBOX_MARGIN = 0.05
+FLOOR_HEIGHT = 1e-2
+HEIGHT_THRESHOLD = 0.0
+NBV_POSITION_TOLERANCE = 0.05
 
-USE_NBV = True
-NBV_NUM_VIEWS = 8
-NBV_INFLATION_FACTOR = 1.5
-NBV_MARGIN_FACTOR = 1.2
-NBV_LAMBDA_DISTANCE = 5.0
-NBV_SAVE_DEBUG_IMAGES = False
-NBV_OUTPUT_FOLDER = "potential_views_debug"
-NBV_PROJECTION_WIDTH = 160
-NBV_PROJECTION_HEIGHT = 160
-NBV_USE_DISTANCE_PENALTY = False
-NBV_POSITION_TOLERANCE = 0.03
-NBV_STABLE_FRAMES_REQUIRED = 1
+# nbv input
+NBV_RADIUS_MARGIN = 1.0
+NBV_MIN_HEIGHT = 0.0
+NUM_ELEV = 3
+NUM_AZIM = 8
+FAC_INFL = 1.2
+DISTANCE_PENALTY = False
 
-SEND_NBV_TO_UNITY = True
-PLOT_PATH = False  
-PLOT_VOXEL_CENTERS = True 
-PLOT_HISTORY = True
-PLOT_3D_PATHS = False
-SAVE_HISTORY_TO_EXCEL = False
+# stopping condition
+VOLUME_CHANGE_THRESHOLD = 0.03
+VOLUME_STABLE_LIMIT = 2
 
+# plotting option
+PLOT_VOXEL_CENTERS = False
+PLOT_INTERMEDIATE_RESULTS = True
 
 def is_drone_at_target(current_position, target_position, tolerance):
     distance = np.linalg.norm(current_position - target_position)
     return distance <= tolerance, distance
 
-UNKNOWN_SURFACE_RATIO_THRESHOLD = 0.03
-VOLUME_CHANGE_THRESHOLD = 0.03
-VOLUME_STABLE_LIMIT = 2
-
-
 def main():
     depth_server, depth_conn = create_server(HOST, DEPTH_PORT)
-    nbv_sock = None
-
-    if SEND_NBV_TO_UNITY:
-        try:
-            nbv_sock = connect_to_unity_nbv(NBV_HOST, NBV_PORT)
-            print(
-                f"Connected to Unity NBV receiver on "
-                f"{NBV_HOST}:{NBV_PORT}"
-            )
-        except Exception as e:
-            print(f"Could not connect to Unity NBV receiver: {e}")
-
-    frame_count = 0
-    detected_view_count = 0
-
-    previous_volume_estimate = None
-    stable_volume_count = 0
-
-    unknown_surface_counts = []
-    unknown_surface_ratio_history = []
-
-    volume_view_numbers = []
-    total_unknown_occupied_volume_history = []
-    true_volume_for_total_history = []
-
-    nbv_distance = []
-    nbv_gain = []
-    nbv_all_paths = []
-    nbv_simple_paths = []
-
-    visited_view_ids = set()
-
-    waiting_for_nbv_move = False
-    pending_nbv_position = None
-    stable_target_frame_count = 0
-
+    nbv_socket = connect_to_unity_nbv(NBV_HOST, NBV_PORT)
+    print(f"Connected to Unity NBV receiver on "
+          f"{NBV_HOST}:{NBV_PORT}")
+    
     recon = ExtrusionFusionReconstruction(
         voxel_size=VOXEL_SIZE,
         bbox_margin=BBOX_MARGIN,
         floor_height=FLOOR_HEIGHT,
-        min_z_height=OBJECT_HEIGHT_THRESHOLD
+        min_z_height=HEIGHT_THRESHOLD,
     )
-
+    waiting_for_nbv_move = False
+    pending_nbv_position = None
+    detected_view_count = 0
+    stable_volume_count = 0
+    
+    # volume
+    view_history = []
+    volume_history = []
+    true_volume_history = []    
+    prev_volume = None
+    
+    # nbv history
+    nbv_distance = []
+    nbv_gain = []
+    
     try:
         while True:
             width, height, fov, near, far, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, true_volume = receive_header(depth_conn)
-
+            camera = CameraIntrinsics(fov_deg=fov, 
+                                      near=near, 
+                                      width=width,
+                                      height=height)
             depth = receive_depth(depth_conn, width, height)
-            if depth is None:
-                break
-            position = (pos_x, pos_y, pos_z)
-            quaternion = (rot_x, rot_y, rot_z, rot_w)
-            current_position_np = np.asarray(position, dtype=float)
-            current_aspect_ratio = float(width) / float(height)
-            print_depth_info(depth, width, height, fov, near, far, position, quaternion)
+            position = np.asarray((pos_x, pos_y, pos_z), dtype=float)
+            quat = (rot_x, rot_y, rot_z, rot_w)
             
             if not recon.initialized:
                 filtered_points = filter_by_height(
-                    depth=depth,
+                    depth=depth, 
                     fov_degrees=fov, 
-                    far=far,
+                    far=far, 
                     position=position,
-                    quaternion=quaternion,
+                    quaternion=quat, 
                     floor_height=FLOOR_HEIGHT,
-                    height_threshold=OBJECT_HEIGHT_THRESHOLD
+                    height_threshold=HEIGHT_THRESHOLD
                 )
                 
                 if len(filtered_points) == 0:
-                    continue 
-                recon.initialize(filtered_points)                
-                
-
+                    continue
+                recon.initialize(filtered_points)
+            
             if waiting_for_nbv_move:
-                arrived = np.linalg.norm(current_position_np - pending_nbv_position) <= NBV_POSITION_TOLERANCE
-                print("Waiting for drone to reach NBV target... ")
-                if not arrived:
-                    stable_target_frame_count = 0
-                    print("Drone still moving. ")
-                    frame_count += 1
+                is_at_target, distance = is_drone_at_target(position, pending_nbv_position, NBV_POSITION_TOLERANCE)
+                if not is_at_target:
+                    print(f'Drone still moving... Distance to target: {distance:.3f}m')
                     continue
-
-                stable_target_frame_count += 1
-
-                print("Drone is near target. Stable frame "
-                    f"{stable_target_frame_count}/"
-                    f"{NBV_STABLE_FRAMES_REQUIRED}"
-                )
-
-                if stable_target_frame_count < NBV_STABLE_FRAMES_REQUIRED:
-                    frame_count += 1
-                    continue
-                print("Drone reached NBV target. ")
-                
-                waiting_for_nbv_move = False
-                pending_nbv_position = None
-                stable_target_frame_count = 0
-
-
+                else:
+                    waiting_for_nbv_move = False
+                    pending_nbv_position = None
+            
             recon.carve_with_depth_image(
                 depth=depth,
                 fov_degrees=fov,
                 far=far,
                 position=position,
-                quaternion=quaternion,
+                quaternion=quat,
                 floor_height=FLOOR_HEIGHT,
-                height_threshold=OBJECT_HEIGHT_THRESHOLD,
-                )
-
+                height_threshold=HEIGHT_THRESHOLD
+            )
+            
             detected_view_count += 1
-
+            
             print(
                 "\n===================================================="
                 f"\nReconstruction updated with detected view "
@@ -188,32 +126,30 @@ def main():
                 f"\nCamera position used: {position}"
                 "\n===================================================="
             )
-
+            
             if PLOT_VOXEL_CENTERS:
                 plot_voxel_centers_3d(
-                    occupied_centers=recon.occupied_centers,
-                    unknown_centers=recon.unknown_centers,
-                    bbox_corners=recon.bbox_corners,
+                    occupied_centers=recon.occupied_centers, 
+                    unknown_centers = recon.unknown_centers, 
+                    bbox_corners = recon.bbox_corners,
                     title=(
                         "Occupied and Unknown Voxels - "
                         f"View {detected_view_count}"
                     ),
                 )
-
-            total_unknown_occupied_volume = recon.occupied_volume + recon.unknown_volume
-            volume_view_numbers.append(detected_view_count)
-            total_unknown_occupied_volume_history.append(total_unknown_occupied_volume)
-            true_volume_for_total_history.append(true_volume)
-            relative_change = None
-
-            if previous_volume_estimate is not None:
-                relative_change = abs(total_unknown_occupied_volume - previous_volume_estimate) / max(abs(previous_volume_estimate), 1e-12)
-
+            
+            view_history.append(detected_view_count)
+            volume_history.append(recon.occupied_volume + recon.unknown_volume)
+            true_volume_history.append(true_volume)
+            
+            if prev_volume is not None:
+                relative_change = abs(volume_history[-1]-prev_volume) /max(abs(prev_volume), 1e-12)
+                
                 if relative_change < VOLUME_CHANGE_THRESHOLD:
-                    stable_volume_count += 1
+                    stable_volume_count +=1
                 else:
                     stable_volume_count = 0
-
+                
                 print(
                     f"Volume change: "
                     f"{relative_change * 100:.3f}% | "
@@ -221,362 +157,72 @@ def main():
                     f"{stable_volume_count}/"
                     f"{VOLUME_STABLE_LIMIT}"
                 )
-
-            previous_volume_estimate = total_unknown_occupied_volume
-
-            volume_stable = stable_volume_count >= VOLUME_STABLE_LIMIT
-
-            # --------------------------------------------------
-            # Surface-completeness stopping criterion
-            # --------------------------------------------------
-            unknown_surface_idx, occupied_surface_idx = recon.surface_data()
-            unknown_surface_count = len(unknown_surface_idx)
-            occupied_surface_count = len(occupied_surface_idx)
-            total_surface_count = unknown_surface_count + occupied_surface_count
-            unknown_surface_ratio = unknown_surface_count / max(total_surface_count, 1)
-            unknown_surface_counts.append(unknown_surface_count)
-
-
-            unknown_surface_ratio_history.append(unknown_surface_ratio)
-            surface_complete = (unknown_surface_ratio < UNKNOWN_SURFACE_RATIO_THRESHOLD)
-
-            print(
-                f"Surface summary | "
-                f"unknown surface: "
-                f"{unknown_surface_count} | "
-                f"occupied surface: "
-                f"{occupied_surface_count} | "
-                f"total surface: "
-                f"{total_surface_count} | "
-                f"unknown ratio: "
-                f"{unknown_surface_ratio * 100:.3f}%"
-            )
-
-            print(
-                f"Stopping checks | "
-                f"surface complete: {surface_complete} | "
-                f"volume stable: {volume_stable}"
-            )
-
-            should_stop = volume_stable or surface_complete
-            stop_reason = None
-            best_view = None
-            best_score = None
-            path_to_best_view = None
-
-            candidate_views_exhausted = False
-
-            if (
-                hasattr(recon, "unknown_centers")
-                and len(recon.unknown_centers) > 0
-            ):
-                object_center = 0.5 * (
-                    recon.bbox_min
-                    + recon.bbox_max
-                )
-
-                candidate_views = (
-                    generate_candidate_views_from_bbox(
-                        bbox_min=recon.bbox_min,
-                        bbox_max=recon.bbox_max,
-                        fov_degrees=fov,
-                        num_azimuth_views=NBV_NUM_VIEWS,
-                        height_fractions=(
-                            0.2,
-                            0.60,
-                            1.0,
-                            1.2,
-                        ),
-                        margin_factor=NBV_MARGIN_FACTOR,
-                    )
-                )
-
-                candidate_views_exhausted = (
-                    len(visited_view_ids)
-                    >= len(candidate_views)
-                )
-
-                if not candidate_views_exhausted:
-                    (
-                        best_view,
-                        best_score,
-                        distance,
-                        gain,
-                        path_to_best_view,
-                    ) = compute_next_best_view(
-                        occupied_voxels=(
-                            recon.occupied_centers
-                        ),
-                        unknown_voxels=(
-                            recon.unknown_centers
-                        ),
-                        object_center=object_center,
-                        candidate_views=candidate_views,
-                        current_camera_position=(
-                            current_position_np
-                        ),
-                        visited_view_ids=(
-                            visited_view_ids
-                        ),
-                        lambda_distance=(
-                            NBV_LAMBDA_DISTANCE
-                        ),
-                        fov_degrees=fov,
-                        image_width=(
-                            NBV_PROJECTION_WIDTH
-                        ),
-                        image_height=(
-                            NBV_PROJECTION_HEIGHT
-                        ),
-                        aspect_ratio=(
-                            current_aspect_ratio
-                        ),
-                        voxel_size=VOXEL_SIZE,
-                        use_distance_penalty=(
-                            NBV_USE_DISTANCE_PENALTY
-                        ),
-                        save_debug_images=(
-                            NBV_SAVE_DEBUG_IMAGES
-                        ),
-                        output_folder=(
-                            NBV_OUTPUT_FOLDER
-                        ),
-                        print_scores=True,
-                        bbox_inflation_factor=(
-                            NBV_INFLATION_FACTOR
-                        ),
-                        b_min=recon.bbox_min,
-                        b_max=recon.bbox_max,
-                        plot_path=PLOT_PATH,
-                    )
-
-                    nbv_distance.append(distance)
-                    nbv_gain.append(gain)
-
-                    if path_to_best_view is not None:
-                        nbv_all_paths.extend(
-                            path_to_best_view
-                        )
-
-                        if len(nbv_simple_paths) == 0:
-                            nbv_simple_paths.extend(
-                                [
-                                    path_to_best_view[0],
-                                    path_to_best_view[-1],
-                                ]
-                            )
-                        else:
-                            nbv_simple_paths.append(
-                                path_to_best_view[-1]
-                            )
-
-                    if PLOT_HISTORY:
-                        plot_nbv_evaluation_history(
-                            view_numbers=(
-                                volume_view_numbers
-                            ),
-                            nbv_gains=nbv_gain,
-                            nbv_distances=nbv_distance,
-                            estimated_volumes=(
-                                total_unknown_occupied_volume_history
-                            ),
-                            true_volumes=(
-                                true_volume_for_total_history
-                            ),
-                            output_file_path=None,
-                        )
-
-                    if SAVE_HISTORY_TO_EXCEL:
-                        os.makedirs(
-                            "history",
-                            exist_ok=True,
-                        )
-
-                        save_nbv_history_to_excel(
-                            view_numbers=(
-                                volume_view_numbers
-                            ),
-                            nbv_gains=nbv_gain,
-                            nbv_distances=nbv_distance,
-                            output_file_path=(
-                                "history/"
-                                "nbv_history_DPEN_"
-                                f"{NBV_USE_DISTANCE_PENALTY}"
-                                ".xlsx"
-                            ),
-                        )
-
-                        save_volume_history_to_excel(
-                            view_numbers=(
-                                volume_view_numbers
-                            ),
-                            total_unknown_occupied_volumes=(
-                                total_unknown_occupied_volume_history
-                            ),
-                            true_volumes=(
-                                true_volume_for_total_history
-                            ),
-                            output_file_path=(
-                                "history/"
-                                "volume_history_DPEN_"
-                                f"{NBV_USE_DISTANCE_PENALTY}"
-                                ".xlsx"
-                            ),
-                        )
-
-                    if (
-                        PLOT_3D_PATHS
-                        and path_to_best_view is not None
-                    ):
-                        plot_all_nbv_positions_3d(
-                            bbox_min=recon.bbox_min,
-                            bbox_max=recon.bbox_max,
-                            inflation_factor=(
-                                NBV_INFLATION_FACTOR
-                            ),
-                            nbv_waypoints=(
-                                nbv_all_paths
-                            ),
-                            elevation=25,
-                            azimuth=-55,
-                            output_file_path=None,
-                        )
-
-                        plot_all_nbv_positions_3d(
-                            bbox_min=recon.bbox_min,
-                            bbox_max=recon.bbox_max,
-                            inflation_factor=(
-                                NBV_INFLATION_FACTOR
-                            ),
-                            nbv_waypoints=(
-                                nbv_simple_paths
-                            ),
-                            elevation=25,
-                            azimuth=-55,
-                            output_file_path=None,
-                        )
-
-            # Stop if no unvisited candidate remains.
-            if candidate_views_exhausted:
-                should_stop = True
-                stop_reason = (
-                    "All generated candidate views "
-                    "have been visited."
-                )
-
-            # --------------------------------------------------
-            # Save final results and stop
-            # --------------------------------------------------
-            if should_stop:
+            prev_volume = volume_history[-1]
+            
+            if stable_volume_count >= VOLUME_STABLE_LIMIT:
                 print(
                     "\n===================================================="
-                    "\nStopping reconstruction:"
-                    f"\nReason: {stop_reason}"
-                    f"\nUnknown surface ratio: "
-                    f"{unknown_surface_ratio * 100:.3f}%"
-                    f"\nVolume stable count: "
-                    f"{stable_volume_count}/"
-                    f"{VOLUME_STABLE_LIMIT}"
-                    f"\nFinal detected view: "
-                    f"{detected_view_count}"
-                    "\nThe final NBV was computed for evaluation "
-                    "but was not sent."
+                    "\nStopping reconstruction"
                     "\n===================================================="
                 )
-
                 results_folder = "results"
-
-                os.makedirs(
-                    results_folder,
-                    exist_ok=True,
-                )
-
+                os.makedirs(results_folder, exist_ok=True)
                 plot_nbv_evaluation_history(
-                    view_numbers=volume_view_numbers,
+                    view_numbers=view_history,
                     nbv_gains=nbv_gain,
                     nbv_distances=nbv_distance,
-                    estimated_volumes=(
-                        total_unknown_occupied_volume_history
-                    ),
-                    true_volumes=(
-                        true_volume_for_total_history
-                    ),
-                    output_file_path=os.path.join(
-                        results_folder,
-                        "nbv_evaluation_history.png",
-                    ),
+                    estimated_volumes=volume_history,
+                    true_volumes=true_volume_history,
+                    output_file_path=os.path.join(results_folder, 'nbv_evaluation_history.png')
+                )
+                break 
+                            
+            nbv = NextBestViewPlanner(
+                camera=camera,
+                bbox_min=recon.bbox_min,
+                bbox_max=recon.bbox_max,
+                center=recon.bbox_center,
+            )
+            recon.surface_centers()
+            
+            best_score, best_view, best_dist = nbv.select_best_view(
+                occupied_points_w=recon.occupied_surface_centers,
+                unknown_points_w=recon.unknown_surface_centers,
+                cam_cur_pos=position,
+                n_elev=NUM_ELEV,
+                n_azi=NUM_AZIM,
+                fac_infl=FAC_INFL,
+                distance_penalty=DISTANCE_PENALTY,
+                visualize_candidates=False,
+            )
+
+            nbv_gain.append(best_score)
+            nbv_distance.append(best_dist)
+            pending_nbv_position = np.asarray(best_view['pos'], dtype=float)
+            waiting_for_nbv_move = True
+            
+            send_next_view(nbv_socket, best_view)
+
+            print(
+                "\nSent NBV target to Unity."
+                f"\nWaiting for drone to move to: "
+                f"{pending_nbv_position}"
+                "\nReconstruction updates are paused until arrival"
+            )
+            
+            if PLOT_INTERMEDIATE_RESULTS:
+                plot_nbv_evaluation_history(
+                    view_numbers=view_history,
+                    nbv_gains=nbv_gain,
+                    nbv_distances=nbv_distance,
+                    estimated_volumes=volume_history,
+                    true_volumes=true_volume_history,
+                    output_file_path=None,
                 )
 
-                plot_all_nbv_positions_3d(
-                    bbox_min=recon.bbox_min,
-                    bbox_max=recon.bbox_max,
-                    inflation_factor=(
-                        NBV_INFLATION_FACTOR
-                    ),
-                    nbv_waypoints=nbv_all_paths,
-                    elevation=25,
-                    azimuth=-55,
-                    output_file_path=os.path.join(
-                        results_folder,
-                        "complete_nbv_path.png",
-                    ),
-                )
-
-                plot_all_nbv_positions_3d(
-                    bbox_min=recon.bbox_min,
-                    bbox_max=recon.bbox_max,
-                    inflation_factor=(
-                        NBV_INFLATION_FACTOR
-                    ),
-                    nbv_waypoints=nbv_simple_paths,
-                    elevation=25,
-                    azimuth=-55,
-                    output_file_path=os.path.join(
-                        results_folder,
-                        "nbv_positions_path.png",
-                    ),
-                )
-
-                break
-
-
-            if best_view is not None:
-                visited_view_ids.add(
-                    best_view["view_id"]
-                )
-
-                if (
-                    SEND_NBV_TO_UNITY
-                    and nbv_sock is not None
-                ):
-                    send_next_view(
-                        nbv_sock,
-                        best_view,
-                        best_score,
-                    )
-
-                    pending_nbv_position = np.asarray(
-                        best_view["position"],
-                        dtype=float,
-                    )
-
-                    waiting_for_nbv_move = True
-                    stable_target_frame_count = 0
-
-                    print(
-                        "\nSent NBV target to Unity."
-                        f"\nWaiting for drone to move to: "
-                        f"{pending_nbv_position}"
-                        "\nReconstruction updates are paused "
-                        "until arrival."
-                    )
-
-            frame_count += 1
-
+            
     finally:
-        if nbv_sock is not None:
-            nbv_sock.close()
-
+        nbv_socket.close()
         depth_conn.close()
         depth_server.close()
 

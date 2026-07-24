@@ -190,12 +190,15 @@ class ExtrusionFusionReconstruction:
         unknown_list, occupied_list = get_surface_data_numba(self.voxel_state, FREE, UNKNOWN, OCCUPIED)
         unknown_indices = np.array(unknown_list, dtype=np.int32)
         occupied_indices = np.array(occupied_list, dtype=np.int32)
-        #self._surface_debugging(unknown_indices, occupied_indices)
+        self.surface_centers(unknown_indices, occupied_indices)
         return unknown_indices, occupied_indices
 
-    def _surface_debugging(self, unknown_indices, occupied_indices):
-        self.occupied_surface_centers = self._indices_to_centers_from_array(occupied_indices)
-        self.unknown_surface_centers = self._indices_to_centers_from_array(unknown_indices)
+    def surface_centers(self):
+        unknown_list, occupied_list = get_surface_data_numba(self.voxel_state, FREE, UNKNOWN, OCCUPIED)
+        self.unknown_indices = np.array(unknown_list, dtype=np.int32)
+        self.occupied_indices = np.array(occupied_list, dtype=np.int32)
+        self.occupied_surface_centers = self._indices_to_centers_from_array(self.occupied_indices)
+        self.unknown_surface_centers = self._indices_to_centers_from_array(self.unknown_indices)
 
 @numba.njit(fastmath=True)
 def get_surface_data_numba(voxel_state, FREE, UNKNOWN, OCCUPIED):
