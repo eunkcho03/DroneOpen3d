@@ -94,7 +94,6 @@ def main():
                     floor_height=FLOOR_HEIGHT,
                     height_threshold=HEIGHT_THRESHOLD
                 )
-                
                 if len(filtered_points) == 0:
                     continue
                 recon.initialize(filtered_points)
@@ -149,7 +148,6 @@ def main():
                     stable_volume_count +=1
                 else:
                     stable_volume_count = 0
-                
                 print(
                     f"Volume change: "
                     f"{relative_change * 100:.3f}% | "
@@ -176,7 +174,6 @@ def main():
                     true_volume=true_volume,
                     view_numbers=view_history,
                     output_file_path=os.path.join(results_folder, 'nbv_evaluation_history.png'),
-
                 )
                 
                 print('UNKNOWN_COUNT HISTORY', unknown_voxel_history)

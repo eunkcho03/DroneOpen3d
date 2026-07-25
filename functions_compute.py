@@ -74,7 +74,6 @@ class ExtrusionFusionReconstruction:
         valid_measured_depth = valid_depth_mask[candidate_v, candidate_u]
 
         # 3. Evaluate carving rule
-
         filtered_points = filter_by_height(depth, fov_degrees, far, position, quaternion, floor_height, height_threshold)
         self.mark_observed_occupied(filtered_points)
 
@@ -201,7 +200,7 @@ class ExtrusionFusionReconstruction:
         self.unknown_surface_centers = self._indices_to_centers_from_array(self.unknown_indices)
 
 @numba.njit(fastmath=True)
-def get_surface_data_numba(voxel_state, FREE, UNKNOWN, OCCUPIED):
+def get_surface_data_numba(voxel_state, FREE=0, UNKNOWN=1, OCCUPIED=2):
     nx, ny, nz = voxel_state.shape
     unknown_list = numba.typed.List()
     occupied_list = numba.typed.List()
