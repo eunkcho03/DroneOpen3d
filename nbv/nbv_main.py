@@ -153,7 +153,7 @@ class NextBestViewPlanner:
 
         for view in views:
             gain_abs = self.compute_gain(occupied_points_w, unknown_points_w, view['pos'], view['quat'])
-            print('gain', gain_abs)
+            #print('gain', gain_abs)
             if visualize_candidates:
                             self.visualize_view(
                                 occupied_points_w, 

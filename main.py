@@ -39,7 +39,7 @@ VOLUME_STABLE_LIMIT = 2
 
 # plotting option
 PLOT_VOXEL_CENTERS = False
-PLOT_INTERMEDIATE_RESULTS = True
+PLOT_INTERMEDIATE_RESULTS = False
 
 def is_drone_at_target(current_position, target_position, tolerance):
     distance = np.linalg.norm(current_position - target_position)
@@ -65,8 +65,9 @@ def main():
     # volume
     view_history = []
     volume_history = []
-    true_volume_history = []    
     prev_volume = None
+    unknown_voxel_history = [] # number of unknown voxels
+    position_history = []
     
     # nbv history
     nbv_distance = []
@@ -97,7 +98,8 @@ def main():
                 if len(filtered_points) == 0:
                     continue
                 recon.initialize(filtered_points)
-            
+                print('INITIAL_UNKNOWN_COUNT', recon.unknown_count)
+                
             if waiting_for_nbv_move:
                 is_at_target, distance = is_drone_at_target(position, pending_nbv_position, NBV_POSITION_TOLERANCE)
                 if not is_at_target:
@@ -116,8 +118,10 @@ def main():
                 floor_height=FLOOR_HEIGHT,
                 height_threshold=HEIGHT_THRESHOLD
             )
-            
-            detected_view_count += 1
+            unknown_voxel_history.append(recon.unknown_count)
+            view_history.append(detected_view_count)
+            position_history.append(position)
+            volume_history.append(recon.occupied_volume + recon.unknown_volume)
             
             print(
                 "\n===================================================="
@@ -138,10 +142,6 @@ def main():
                     ),
                 )
             
-            view_history.append(detected_view_count)
-            volume_history.append(recon.occupied_volume + recon.unknown_volume)
-            true_volume_history.append(true_volume)
-            
             if prev_volume is not None:
                 relative_change = abs(volume_history[-1]-prev_volume) /max(abs(prev_volume), 1e-12)
                 
@@ -157,6 +157,7 @@ def main():
                     f"{stable_volume_count}/"
                     f"{VOLUME_STABLE_LIMIT}"
                 )
+                
             prev_volume = volume_history[-1]
             
             if stable_volume_count >= VOLUME_STABLE_LIMIT:
@@ -167,14 +168,18 @@ def main():
                 )
                 results_folder = "results"
                 os.makedirs(results_folder, exist_ok=True)
+
                 plot_nbv_evaluation_history(
+                    unknown_voxel_history=unknown_voxel_history,
+                    position_history=position_history,
+                    volume_history=volume_history,
+                    true_volume=true_volume,
                     view_numbers=view_history,
-                    nbv_gains=nbv_gain,
-                    nbv_distances=nbv_distance,
-                    estimated_volumes=volume_history,
-                    true_volumes=true_volume_history,
-                    output_file_path=os.path.join(results_folder, 'nbv_evaluation_history.png')
+                    output_file_path=os.path.join(results_folder, 'nbv_evaluation_history.png'),
+
                 )
+                
+                print('UNKNOWN_COUNT HISTORY', unknown_voxel_history)
                 break 
                             
             nbv = NextBestViewPlanner(
@@ -198,10 +203,12 @@ def main():
 
             nbv_gain.append(best_score)
             nbv_distance.append(best_dist)
+            
             pending_nbv_position = np.asarray(best_view['pos'], dtype=float)
             waiting_for_nbv_move = True
             
             send_next_view(nbv_socket, best_view)
+            detected_view_count += 1
 
             print(
                 "\nSent NBV target to Unity."
@@ -212,12 +219,11 @@ def main():
             
             if PLOT_INTERMEDIATE_RESULTS:
                 plot_nbv_evaluation_history(
+                    unknown_voxel_history=unknown_voxel_history,
+                    position_history=position_history,
+                    volume_history=volume_history,
+                    true_volume=true_volume,
                     view_numbers=view_history,
-                    nbv_gains=nbv_gain,
-                    nbv_distances=nbv_distance,
-                    estimated_volumes=volume_history,
-                    true_volumes=true_volume_history,
-                    output_file_path=None,
                 )
 
             

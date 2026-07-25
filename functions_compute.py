@@ -154,11 +154,11 @@ class ExtrusionFusionReconstruction:
         occupied_mask = self.voxel_state == OCCUPIED
         unknown_mask = self.voxel_state == UNKNOWN
 
-        occupied_count = int(np.count_nonzero(occupied_mask))
-        unknown_count = int(np.count_nonzero(unknown_mask))
+        self.occupied_count = int(np.count_nonzero(occupied_mask))
+        self.unknown_count = int(np.count_nonzero(unknown_mask))
 
-        self.occupied_volume = occupied_count * voxel_volume
-        self.unknown_volume = unknown_count * voxel_volume
+        self.occupied_volume = self.occupied_count * voxel_volume
+        self.unknown_volume = self.unknown_count * voxel_volume
 
         self.occupied_indices = np.argwhere(occupied_mask)
         self.unknown_indices = np.argwhere(unknown_mask)

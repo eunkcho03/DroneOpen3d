@@ -335,58 +335,26 @@ def save_volume_history_to_excel(
     
 
 def plot_nbv_evaluation_history(
+    unknown_voxel_history,
+    position_history,
+    volume_history,
+    true_volume,
     view_numbers,
-    nbv_gains,
-    nbv_distances,
-    estimated_volumes,
-    true_volumes,
-    output_file_path = None,
+    output_file_path=None,
 ):
+    true_volumes = np.ones(len(view_numbers))*true_volume
+    gains = np.insert(-np.diff(np.asarray(unknown_voxel_history)), 0, 0)
+    pos = np.asarray(position_history)
+    step_distances = np.linalg.norm(np.diff(pos, axis=0), axis=1) if len(pos) > 1 else np.array([])
+    distance = np.insert(step_distances, 0, 0)
+    fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True,)
 
-    #view_numbers = np.asarray(view_numbers, dtype=int)
-    #nbv_gains = np.asarray(nbv_gains, dtype=float)
-    #nbv_distances = np.asarray(nbv_distances, dtype=float)
-    estimated_volumes = np.asarray(estimated_volumes, dtype=float)
-    true_volumes = np.asarray(true_volumes, dtype=float)
-
-
-    nbv_gains = np.insert(nbv_gains, 0, 0.0)
-    nbv_distances = np.insert(nbv_distances, 0, 0.0)
-    gd_views = np.insert(view_numbers, 0, 0)
-    
-    cumulative_gains = np.cumsum(nbv_gains)
-    cumulative_distances = np.cumsum(nbv_distances)
-
-    volume_error_percent = (
-        np.abs(estimated_volumes - true_volumes)
-        / true_volumes
-        * 100.0
-    )
-
-    fig, axes = plt.subplots(
-        3,
-        1,
-        figsize=(8, 10),
-        sharex=True,
-    )
-
+    # ---------------------------------------------------------
+    # Gain (diff in number of unknown_voxels)
+    # ---------------------------------------------------------    
     ax_gain = axes[0]
-
-    ax_gain.bar(
-        gd_views,
-        nbv_gains,
-        alpha=0.45,
-        label="Gain from current view",
-    )
-
-    ax_gain.plot(
-        gd_views,
-        cumulative_gains,
-        marker="o",
-        linewidth=2,
-        label="Cumulative gain",
-    )
-
+    ax_gain.bar(np.asarray(view_numbers), gains, alpha=0.45, label="Gain from current view")
+    ax_gain.plot(np.asarray(view_numbers), np.cumsum(gains), marker="o", linewidth=2, label='Cumulative gain')
     ax_gain.set_title("Information Gain")
     ax_gain.set_ylabel("Gain")
     ax_gain.grid(True, alpha=0.3)
@@ -396,22 +364,8 @@ def plot_nbv_evaluation_history(
     # Distance
     # ---------------------------------------------------------
     ax_distance = axes[1]
-
-    ax_distance.bar(
-        gd_views,
-        nbv_distances,
-        alpha=0.45,
-        label="Distance to current view",
-    )
-
-    ax_distance.plot(
-        gd_views,
-        cumulative_distances,
-        marker="s",
-        linewidth=2,
-        label="Cumulative distance",
-    )
-
+    ax_distance.bar(np.asarray(view_numbers), distance, alpha=0.45, label="Distance to current view")
+    ax_distance.plot(np.asarray(view_numbers), np.cumsum(distance), marker="s", linewidth=2, label="Cumulative distance")
     ax_distance.set_title("Travel Distance")
     ax_distance.set_ylabel("Distance [m]")
     ax_distance.grid(True, alpha=0.3)
@@ -421,28 +375,14 @@ def plot_nbv_evaluation_history(
     # Volume
     # ---------------------------------------------------------
     ax_volume = axes[2]
-
-    ax_volume.plot(
-        view_numbers,
-        estimated_volumes,
-        marker="o",
-        linewidth=2,
-        label="Estimated occupied + unknown volume",
-    )
-
-    ax_volume.plot(
-        view_numbers,
-        true_volumes,
-        linestyle="--",
-        linewidth=2,
-        label="True Unity volume",
-    )
-
-    final_error = volume_error_percent[-1]
+    ax_volume.plot(np.asarray(view_numbers), np.asarray(volume_history), marker="o", linewidth=2, label="Estimated occupied + unknown volume")
+    ax_volume.plot(np.asarray(view_numbers), true_volumes, linestyle="--", linewidth=2, label="True Unity volume")
+    
+    final_error = np.abs(volume_history[-1] - true_volume) / true_volume * 100.0
 
     ax_volume.annotate(
         f"Final error = {final_error:.2f}%",
-        xy=(view_numbers[-1], estimated_volumes[-1]),
+        xy=(view_numbers[-1], np.asarray(volume_history)[-1]),
         xytext=(8, 10),
         textcoords="offset points",
     )
@@ -456,10 +396,6 @@ def plot_nbv_evaluation_history(
     for ax in axes:
         ax.set_xticks(view_numbers)
 
-    #fig.suptitle(
-    #    f"Path-Planning Evaluation: {planner_name}",
-    #    fontsize=15,
-    #)
 
     plt.tight_layout()
     if output_file_path is not None:
@@ -471,3 +407,4 @@ def plot_nbv_evaluation_history(
         plt.close()
     else:
         plt.show()
+        
