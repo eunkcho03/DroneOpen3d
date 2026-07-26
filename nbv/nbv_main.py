@@ -23,9 +23,6 @@ class NextBestViewPlanner:
         center: np.ndarray,
         margin: float = 1.0,
         min_height: float = 0.0,
-        max_elev_rad: float = np.pi / 3,
-        azi_min_step_rad: float = np.deg2rad(45),
-        elev_min_step_rad: float = np.deg2rad(20),
     ):
         self.camera = camera
         self.bbox_min = bbox_min
@@ -33,9 +30,6 @@ class NextBestViewPlanner:
         self.center = center
         self.margin = margin
         self.min_height = min_height
-        self.max_elev_rad = max_elev_rad
-        self.azi_min_step_rad = azi_min_step_rad
-        self.elev_min_step_rad = elev_min_step_rad
 
         self.r_obj = 0.5 * np.linalg.norm(self.bbox_max - self.bbox_min)
         self.view_radius = self.r_obj / np.sin(0.5 * np.deg2rad(self.camera.fov_deg)) * self.margin
@@ -53,21 +47,14 @@ class NextBestViewPlanner:
 
         return R.from_matrix(rot_matrix).as_quat()
 
-    def generate_candidate_views(self, n_elev: int, n_azi: int):
+    def generate_candidate_views(self, n_elev: int, n_azi: int, elev_min_deg=-30, elev_max_deg=30):
         d_off = self.min_height - self.center[1]
-        sin_val = np.clip(d_off / self.view_radius, -1.0, 1.0)
-        elev_min_rad = max(np.arcsin(sin_val), -np.pi / 9)
+        sin_val = np.clip(d_off / self.view_radius, -1.0, 1.0)        
+        elev_min_rad = np.arcsin(sin_val)
 
-        elevation_span = self.max_elev_rad - elev_min_rad
-        n_azi_eff = min(n_azi, max(1, int(np.floor(2 * np.pi / self.azi_min_step_rad))))
-        n_elev_eff = min(n_elev, max(1, int(np.floor(elevation_span / self.elev_min_step_rad))))
-
-        azi_rad = np.linspace(0, 2 * np.pi, n_azi_eff, endpoint=False)
-        elev_rad = (
-            np.array([0.5 * (elev_min_rad + self.max_elev_rad)])
-            if n_elev_eff == 1
-            else np.linspace(elev_min_rad, self.max_elev_rad, n_elev_eff)
-        )
+        azi_rad = np.linspace(0, 2 * np.pi, n_azi, endpoint=False)
+        elev_rad = np.linspace(np.deg2rad(elev_min_deg), np.deg2rad(elev_max_deg), n_elev)
+        elev_rad = elev_rad[elev_rad>=elev_min_rad]
 
         views = []
         view_id = 0
@@ -150,7 +137,6 @@ class NextBestViewPlanner:
         best_score = -1.0
         best_view = None
         best_dist = 0
-
         for view in views:
             gain_abs = self.compute_gain(occupied_points_w, unknown_points_w, view['pos'], view['quat'])
             #print('gain', gain_abs)
