@@ -21,6 +21,8 @@ class ExtrusionFusionReconstruction:
         self.min_z_height = min_z_height
         self.initialized = False
         
+        self.carve_margin = 0.5 * voxel_size
+        
     def initialize(self, points_world):
         points_world = np.asarray(points_world)
         self.bbox_min, self.bbox_max, self.bbox_corners, self.bbox_center = self._compute_bbox(points_world)
@@ -79,7 +81,7 @@ class ExtrusionFusionReconstruction:
 
         carve_free_space = np.where(
             valid_measured_depth,
-            candidate_z < measured_depth,
+            candidate_z < measured_depth - self.carve_margin,
             candidate_z < far,
         )
 

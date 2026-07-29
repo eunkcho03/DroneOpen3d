@@ -19,10 +19,10 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.005
+VOXEL_SIZE = 0.001
 BBOX_MARGIN = 0.05
-FLOOR_HEIGHT = 1e-2
-HEIGHT_THRESHOLD = 0.0
+FLOOR_HEIGHT = 0.0
+HEIGHT_THRESHOLD = 1e-3
 NBV_POSITION_TOLERANCE = 0.05
 
 # nbv input
@@ -35,11 +35,11 @@ DISTANCE_PENALTY = False
 
 # stopping condition5
 VOLUME_CHANGE_THRESHOLD = 0.03
-VOLUME_STABLE_LIMIT = 2
+VOLUME_STABLE_LIMIT = 3
 
 # plotting option
-PLOT_VOXEL_CENTERS = False
-PLOT_INTERMEDIATE_RESULTS = False
+PLOT_VOXEL_CENTERS = True
+PLOT_INTERMEDIATE_RESULTS = True
 
 def is_drone_at_target(current_position, target_position, tolerance):
     distance = np.linalg.norm(current_position - target_position)
@@ -130,16 +130,17 @@ def main():
                 "\n===================================================="
             )
             
-            if PLOT_VOXEL_CENTERS:
-                plot_voxel_centers_3d(
-                    occupied_centers=recon.occupied_centers, 
-                    unknown_centers = recon.unknown_centers, 
-                    bbox_corners = recon.bbox_corners,
-                    title=(
-                        "Occupied and Unknown Voxels - "
-                        f"View {detected_view_count}"
-                    ),
-                )
+            #if PLOT_VOXEL_CENTERS:
+            #    plot_voxel_centers_3d(
+            #        occupied_centers=recon.occupied_centers, 
+            #        unknown_centers = recon.unknown_centers, 
+            #        bbox_corners = recon.bbox_corners,
+            #        title=(
+            #            "Occupied and Unknown Voxels - "
+            #            f"View {detected_view_count}"
+            #        ),
+            #    )
+            
             
             if prev_volume is not None:
                 relative_change = abs(volume_history[-1]-prev_volume) /max(abs(prev_volume), 1e-12)
@@ -184,8 +185,20 @@ def main():
                 bbox_min=recon.bbox_min,
                 bbox_max=recon.bbox_max,
                 center=recon.bbox_center,
+                min_height=NBV_MIN_HEIGHT,
             )
             recon.surface_centers()
+            if PLOT_VOXEL_CENTERS:
+                plot_voxel_centers_3d(
+                    occupied_centers=recon.occupied_surface_centers, 
+                    unknown_centers = recon.unknown_surface_centers, 
+                    bbox_corners = recon.bbox_corners,
+                    title=(
+                        "Occupied and Unknown Voxels - "
+                        f"View {detected_view_count}"
+                    ),
+                )
+            
             
             best_score, best_view, best_dist = nbv.select_best_view(
                 occupied_points_w=recon.occupied_surface_centers,

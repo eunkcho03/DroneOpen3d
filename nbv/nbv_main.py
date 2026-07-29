@@ -48,30 +48,35 @@ class NextBestViewPlanner:
         return R.from_matrix(rot_matrix).as_quat()
 
     def generate_candidate_views(self, n_elev: int, n_azi: int, elev_min_deg=-30, elev_max_deg=30):
-        d_off = self.min_height - self.center[1]
-        sin_val = np.clip(d_off / self.view_radius, -1.0, 1.0)        
+        d_off = max(0.0, self.min_height - self.center[1])
+        radius_height = d_off / np.sin(np.deg2rad(elev_max_deg))
+        view_radius = max(self.view_radius, radius_height)
+                
+        sin_val = np.clip(d_off / view_radius, -1.0, 1.0)        
         elev_min_rad = np.arcsin(sin_val)
 
         azi_rad = np.linspace(0, 2 * np.pi, n_azi, endpoint=False)
         elev_rad = np.linspace(np.deg2rad(elev_min_deg), np.deg2rad(elev_max_deg), n_elev)
         elev_rad = elev_rad[elev_rad>=elev_min_rad]
-
+                
         views = []
         view_id = 0
         for elev in elev_rad:
-            r_h = self.view_radius * np.cos(elev)
-            r_v = self.view_radius * np.sin(elev)
+            r_h = view_radius * np.cos(elev)
+            r_v = view_radius * np.sin(elev)
             for azi in azi_rad:
                 cam_pos = np.array([
                     self.center[0] + r_h * np.cos(azi),
                     self.center[1] + r_v,
                     self.center[2] + r_h * np.sin(azi),
                 ], dtype=float)
-
-                quat = self.compute_lookat_quaternion(cam_pos, self.center)
-                views.append({'view_id': view_id, 'pos': cam_pos, 'quat': quat})
-                view_id += 1
-
+                print(cam_pos)
+                if cam_pos[1] >= self.min_height:
+                    quat = self.compute_lookat_quaternion(cam_pos, self.center)
+                    views.append({'view_id': view_id, 'pos': cam_pos, 'quat': quat})
+                    view_id += 1
+                else:
+                    continue
         return views
 
     def compute_gain(
@@ -139,7 +144,7 @@ class NextBestViewPlanner:
         best_dist = 0
         for view in views:
             gain_abs = self.compute_gain(occupied_points_w, unknown_points_w, view['pos'], view['quat'])
-            #print('gain', gain_abs)
+            print('gain', gain_abs)
             if visualize_candidates:
                             self.visualize_view(
                                 occupied_points_w, 
