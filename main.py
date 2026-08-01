@@ -38,6 +38,9 @@ MAX_ELEV_DEG = 30
 VOLUME_CHANGE_THRESHOLD = 0.03
 VOLUME_STABLE_LIMIT = 3
 
+# initialisation
+MIN_ALT_BUFFER = 1.3
+
 # plotting option
 PLOT_VOXEL_CENTERS = True
 PLOT_INTERMEDIATE_RESULTS = True
@@ -78,6 +81,7 @@ def main():
     
     # initialisation state
     initial_target_sent = False
+    min_alt_buffer = MIN_ALT_BUFFER
     
     # nbv history
     nbv_distance = []
@@ -108,15 +112,30 @@ def main():
                     continue
                 
                 if not initial_target_sent:
-                    initial_views = initial.initial_position(filtered_points)
+                    initial_views = initial.initial_position(filtered_points, min_alt_buffer)
                     send_next_view(nbv_socket, initial_views[0])
                     initial_target_sent = True
                     continue 
+                
+                is_at_target, distance = is_drone_at_target(position, initial_views[0]['pos'], NBV_POSITION_TOLERANCE)
+                
+                if not is_at_target:
+                    print(f'Drone still moving to initial view... Distance to target: {distance:.3f}m')
+                    continue
+                
+                print("Camera reached initial target.")
+                
+                is_valid = initial.verification(filtered_points, position, quat, width, height, fov, min_alt_buffer)
+                
+                if not is_valid:
+                    min_alt_buffer += 0.1
+                    initial_target_sent = False
+                    print(f"Initial verification failed. Increasing min_alt_buffer to {min_alt_buffer:.2f} and sending new initial view.")
+                    continue
                                     
-                if initial.verification(filtered_points, position, quat, width, height, fov):
-                    recon.initialize(filtered_points)
-                    print('INITIAL_UNKNOWN_COUNT', recon.unknown_count)
-            
+                recon.initialize(filtered_points)
+                print('INITIAL_UNKNOWN_COUNT', recon.unknown_count)
+                    
                 
             if waiting_for_nbv_move:
                 is_at_target, distance = is_drone_at_target(position, pending_nbv_position, NBV_POSITION_TOLERANCE)

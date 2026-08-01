@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-from functions_camera import world_to_camera, compute_lookat_quaternion
+from functions_camera import world_to_camera
 from nbv.nbv_distance import compute_distance
 
 
@@ -35,6 +35,18 @@ class NextBestViewPlanner:
         self.view_radius = self.r_obj / np.sin(0.5 * np.deg2rad(self.camera.fov_deg)) * self.margin
 
     @staticmethod
+    def compute_lookat_quaternion(cam_pos: np.ndarray, center: np.ndarray, world_up=np.array([0, 1, 0])) -> np.ndarray:
+        forward = center - cam_pos
+        forward = forward / np.linalg.norm(forward)
+
+        right = np.cross(world_up, forward)
+        right = right / np.linalg.norm(right)
+
+        true_up = np.cross(forward, right)
+        rot_matrix =  np.column_stack((right, true_up, forward))
+
+        return R.from_matrix(rot_matrix).as_quat()
+
     def generate_candidate_views(self, n_elev: int, n_azi: int, elev_min_deg=-30, elev_max_deg=30):
         d_off = max(0.0, self.min_height - self.center[1])
         radius_height = d_off / np.sin(np.deg2rad(elev_max_deg))
@@ -60,7 +72,7 @@ class NextBestViewPlanner:
                 ], dtype=float)
                 print(cam_pos)
                 if cam_pos[1] >= self.min_height:
-                    quat = compute_lookat_quaternion(cam_pos, self.center)
+                    quat = self.compute_lookat_quaternion(cam_pos, self.center)
                     views.append({'view_id': view_id, 'pos': cam_pos, 'quat': quat})
                     view_id += 1
                 else:

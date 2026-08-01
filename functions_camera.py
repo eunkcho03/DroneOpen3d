@@ -80,33 +80,33 @@ def filter_by_height(depth, fov_degrees, far, position, quaternion, floor_height
     return points_world[points_world[:, 1] > min_height ]
 
 class Initialization:
-    def __init__(self, min_height, max_elev_deg=30, min_points=100, min_alt_buffer=1.5):
+    def __init__(self, min_height, max_elev_deg=30, min_points=100):
         self.min_height = min_height
         self.max_elev_rad = np.deg2rad(max_elev_deg)
         self.min_points = min_points
-        self.min_alt_buffer = min_alt_buffer
     
     def verify_num_points(self, points_world):
         if len(points_world) < self.min_points:
             return False
         return True
 
-    def verify_altitude(self, points_world, camera_pos):
+    def verify_altitude(self, points_world, camera_pos, min_alt_buffer):
         median_y = np.median(points_world[:, 1])
-        if camera_pos[1] < median_y * self.min_alt_buffer:
+        if camera_pos[1] < median_y * min_alt_buffer:
             return False
         return True
     
-    def verification(self, points_world, camera_pos, quaternion, width, height, fov_degrees):
+    def verification(self, points_world, camera_pos, quaternion, width, height, fov_degrees, min_alt_buffer):
         if not self.verify_num_points(points_world):
             return False
-        if not self.verify_altitude(points_world, camera_pos):
+        
+        if not self.verify_altitude(points_world, camera_pos, min_alt_buffer):
             return False
         if not self.verify_full_visibility(points_world, camera_pos, quaternion, width, height, fov_degrees):
             return False
         return True
 
-    def verify_full_visibility(self, points_world, camera_pos, quaternion, width, height, fov_degrees, border_pixel=20):
+    def verify_full_visibility(self, points_world, camera_pos, quaternion, width, height, fov_degrees):
         points_camera = world_to_camera(points_world, camera_pos, quaternion)
         
         x = points_camera[:, 0]
@@ -118,8 +118,8 @@ class Initialization:
         u = (x * fx / z) + cx
         v = (y * fy / z) + cy
         
-        all_u_valid = np.all((u >= border_pixel) & (u < width - border_pixel))
-        all_v_valid = np.all((v >= border_pixel) & (v < height - border_pixel))
+        all_u_valid = np.all((u >= 0) & (u < width))
+        all_v_valid = np.all((v >= 0) & (v < height))
         
         return all_u_valid and all_v_valid
 
@@ -129,10 +129,10 @@ class Initialization:
         object_center = (object_min + object_max) / 2
         return object_min, object_max, object_center
 
-    def initial_position(self, points_world):
+    def initial_position(self, points_world, min_alt_buffer):
         views = []
         _, object_max, object_center = self.get_object_properties(points_world)
-        y_init = max(object_max[1] * self.min_alt_buffer, self.min_height)
+        y_init = max(object_max[1] * min_alt_buffer, self.min_height)
         dy = y_init - object_center[1]
         r_init = dy / np.sin(self.max_elev_rad)
         r_azi = r_init * np.cos(self.max_elev_rad)
