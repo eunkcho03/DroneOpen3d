@@ -2,7 +2,7 @@ import numpy as np
 import os
 from nbv.nbv_main import NextBestViewPlanner, CameraIntrinsics
 from functions_compute import ExtrusionFusionReconstruction
-from functions_camera import  filter_by_height
+from functions_camera import  filter_by_height, Initialization
 from functions_connect import (
     create_server,
     receive_header,
@@ -19,7 +19,7 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.001
+VOXEL_SIZE = 0.01 
 BBOX_MARGIN = 0.05
 FLOOR_HEIGHT = 0.0
 HEIGHT_THRESHOLD = 1e-3
@@ -32,6 +32,7 @@ NUM_ELEV = 3
 NUM_AZIM = 8
 FAC_INFL = 1.2
 DISTANCE_PENALTY = False
+MAX_ELEV_DEG = 30
 
 # stopping condition5
 VOLUME_CHANGE_THRESHOLD = 0.03
@@ -52,11 +53,17 @@ def main():
           f"{NBV_HOST}:{NBV_PORT}")
     
     recon = ExtrusionFusionReconstruction(
-        voxel_size=VOXEL_SIZE,
+        voxel_size_ratio=VOXEL_SIZE,
         bbox_margin=BBOX_MARGIN,
         floor_height=FLOOR_HEIGHT,
         min_z_height=HEIGHT_THRESHOLD,
     )
+    
+    initial = Initialization(
+        min_height = NBV_MIN_HEIGHT,
+        max_elev_deg = MAX_ELEV_DEG,
+    )
+    
     waiting_for_nbv_move = False
     pending_nbv_position = None
     detected_view_count = 0
@@ -68,6 +75,9 @@ def main():
     prev_volume = None
     unknown_voxel_history = [] # number of unknown voxels
     position_history = []
+    
+    # initialisation state
+    initial_target_sent = False
     
     # nbv history
     nbv_distance = []
@@ -96,8 +106,17 @@ def main():
                 )
                 if len(filtered_points) == 0:
                     continue
-                recon.initialize(filtered_points)
-                print('INITIAL_UNKNOWN_COUNT', recon.unknown_count)
+                
+                if not initial_target_sent:
+                    initial_views = initial.initial_position(filtered_points)
+                    send_next_view(nbv_socket, initial_views[0])
+                    initial_target_sent = True
+                    continue 
+                                    
+                if initial.verification(filtered_points, position, quat, width, height, fov):
+                    recon.initialize(filtered_points)
+                    print('INITIAL_UNKNOWN_COUNT', recon.unknown_count)
+            
                 
             if waiting_for_nbv_move:
                 is_at_target, distance = is_drone_at_target(position, pending_nbv_position, NBV_POSITION_TOLERANCE)

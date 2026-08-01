@@ -10,19 +10,19 @@ OCCUPIED = 2
 class ExtrusionFusionReconstruction:
     def __init__(
         self,
-        voxel_size=0.01,
+        voxel_size_ratio=0.01,
         bbox_margin=0.05,
         floor_height=0.0,
         min_z_height=0.01,
     ):
-        self.voxel_size = voxel_size
+        #self.voxel_size = 1
+        self.voxel_size_ratio = voxel_size_ratio
         self.bbox_margin = bbox_margin
         self.floor_height = floor_height
         self.min_z_height = min_z_height
         self.initialized = False
         
-        self.carve_margin = 0.5 * voxel_size
-        
+                
     def initialize(self, points_world):
         points_world = np.asarray(points_world)
         self.bbox_min, self.bbox_max, self.bbox_corners, self.bbox_center = self._compute_bbox(points_world)
@@ -30,6 +30,7 @@ class ExtrusionFusionReconstruction:
         self.voxel_state = np.full(self.grid_shape, UNKNOWN, dtype=np.uint8)
         self.observed_mask = np.zeros(self.grid_shape, dtype=bool)
         self.initialized = True
+        self.carve_margin = 0.5 * self.voxel_size
         self._update_outputs()
         self._log_status('Initialized bbox from first object detection')
 
@@ -100,11 +101,11 @@ class ExtrusionFusionReconstruction:
         return self
 
     def mark_observed_occupied(self, filtered_points):
+        self.expand_grid_if_needed(filtered_points)
         indices = self._voxelize(filtered_points)
         ix = indices[:, 0]
         iy = indices[:, 1]
         iz = indices[:, 2]
-
         self.observed_mask[ix, iy, iz] = True
         self.voxel_state[ix, iy, iz] = OCCUPIED
 
@@ -112,11 +113,23 @@ class ExtrusionFusionReconstruction:
     def _compute_bbox(self, points_world):
         bbox_min = points_world.min(axis=0).copy()
         bbox_max = points_world.max(axis=0).copy()
+        
+        initial_bbox_dimensions = bbox_max - bbox_min
+        shortest_length = initial_bbox_dimensions.min()
+        self.voxel_size = self.voxel_size_ratio * shortest_length
 
         bbox_min[[0, 2]] -= self.bbox_margin
         bbox_max[[0, 2]] += self.bbox_margin
         bbox_min[1] = self.floor_height
 
+        corners = self.get_corners(bbox_min, bbox_max)
+
+        center = 0.5 * (bbox_min + bbox_max)
+
+        return bbox_min, bbox_max, corners, center
+
+
+    def get_corners(self, bbox_min, bbox_max):
         mn_x, mn_y, mn_z = bbox_min
         mx_x, mx_y, mx_z = bbox_max
 
@@ -131,9 +144,30 @@ class ExtrusionFusionReconstruction:
             [mn_x, mx_y, mx_z],
         ])
         
-        center = 0.5 * (bbox_min + bbox_max)
+        return corners
 
-        return bbox_min, bbox_max, corners, center
+    def expand_grid_if_needed(self, points_world):
+        points_min = points_world.min(axis=0)
+        points_max = points_world.max(axis=0)
+        
+        needs_min_expand = points_min < self.bbox_min
+        needs_max_expand = points_max > self.bbox_max
+        
+        if not (np.any(needs_min_expand) or np.any(needs_max_expand)):
+            return 
+        
+        pad_min_voxels = np.maximum(0, np.ceil((self.bbox_min - points_min) / self.voxel_size).astype(int))
+        pad_max_voxels = np.maximum(0, np.ceil((points_max - self.bbox_max) / self.voxel_size).astype(int))
+        
+        self.bbox_min -= pad_min_voxels * self.voxel_size
+        self.bbox_max += pad_max_voxels * self.voxel_size
+        
+        pad_widths = list(zip(pad_min_voxels, pad_max_voxels))
+        
+        self.voxel_state = np.pad(self.voxel_state, pad_widths, mode='constant', constant_values=UNKNOWN)
+        self.observed_mask = np.pad(self.observed_mask, pad_widths, mode='constant', constant_values=False)
+        self.grid_shape = np.array(self.voxel_state.shape, dtype=int)
+        self.bbox_corners = self.get_corners(self.bbox_min, self.bbox_max)
 
     def _compute_grid_shape(self):
         return np.maximum(
