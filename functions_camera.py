@@ -91,10 +91,9 @@ class Initialization:
         return True
 
     def verify_altitude(self, points_world, camera_pos, min_alt_buffer):
-        median_y = np.median(points_world[:, 1])
-        if camera_pos[1] < median_y * min_alt_buffer:
-            return False
-        return True
+        object_max_y = np.max(points_world[:, 1])
+        required_height = max(object_max_y * min_alt_buffer, self.min_height)
+        return camera_pos[1] >= required_height
     
     def verification(self, points_world, camera_pos, quaternion, width, height, fov_degrees, min_alt_buffer):
         if not self.verify_num_points(points_world):
