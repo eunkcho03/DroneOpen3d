@@ -248,18 +248,29 @@ def get_surface_data_numba(voxel_state, FREE=0, UNKNOWN=1, OCCUPIED=2):
 
                 if state == FREE:
                     continue
-
-                if (
+                
+                touches_free = (
                     (x > 0 and voxel_state[x - 1, y, z] == FREE)
                     or (x < nx - 1 and voxel_state[x + 1, y, z] == FREE)
                     or (y > 0 and voxel_state[x, y - 1, z] == FREE)
                     or (y < ny - 1 and voxel_state[x, y + 1, z] == FREE)
                     or (z > 0 and voxel_state[x, y, z - 1] == FREE)
                     or (z < nz - 1 and voxel_state[x, y, z + 1] == FREE)
-                ):
-                    coord = (x, y, z)
-                    if state == UNKNOWN:
-                        unknown_list.append(coord)
-                    elif state == OCCUPIED:
-                        occupied_list.append(coord)
+                )
+                
+                touches_bbox_boundary = (
+                    x == 0
+                    or x == nx - 1
+                    or y == 0
+                    or y == ny - 1
+                    or z == 0
+                    or z == nz - 1
+                )
+
+                if state == UNKNOWN:
+                    if touches_free or touches_bbox_boundary:
+                        unknown_list.append((x, y, z))
+                elif state == OCCUPIED:
+                    if touches_free or touches_bbox_boundary:
+                        occupied_list.append((x, y, z))
     return unknown_list, occupied_list

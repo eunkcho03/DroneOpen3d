@@ -112,7 +112,7 @@ def main():
                     continue
                 
                 if not initial_target_sent:
-                    initial_views = initial.initial_position(filtered_points, min_alt_buffer)
+                    initial_views = initial.initial_position(filtered_points, min_alt_buffer, position)
                     send_next_view(nbv_socket, initial_views[0])
                     initial_target_sent = True
                     continue 
@@ -129,7 +129,9 @@ def main():
                 
                 if not is_valid:
                     min_alt_buffer += 0.1
-                    initial_target_sent = False
+                    initial_views = initial.initial_position(filtered_points, min_alt_buffer)
+                    send_next_view(nbv_socket, initial_views[0])
+
                     print(f"Initial verification failed. Increasing min_alt_buffer to {min_alt_buffer:.2f} and sending new initial view.")
                     continue
                                     

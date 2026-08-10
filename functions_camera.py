@@ -99,14 +99,13 @@ class Initialization:
     def verification(self, points_world, camera_pos, quaternion, width, height, fov_degrees, min_alt_buffer):
         if not self.verify_num_points(points_world):
             return False
-        
         if not self.verify_altitude(points_world, camera_pos, min_alt_buffer):
             return False
         if not self.verify_full_visibility(points_world, camera_pos, quaternion, width, height, fov_degrees):
             return False
         return True
 
-    def verify_full_visibility(self, points_world, camera_pos, quaternion, width, height, fov_degrees):
+    def verify_full_visibility(self, points_world, camera_pos, quaternion, width, height, fov_degrees, margin_ratio=0.05):
         points_camera = world_to_camera(points_world, camera_pos, quaternion)
         
         x = points_camera[:, 0]
@@ -118,8 +117,11 @@ class Initialization:
         u = (x * fx / z) + cx
         v = (y * fy / z) + cy
         
-        all_u_valid = np.all((u >= 0) & (u < width))
-        all_v_valid = np.all((v >= 0) & (v < height))
+        margin_u = margin_ratio * width
+        margin_v = margin_ratio * height
+        
+        all_u_valid = np.all((u >= margin_u) & (u < width - margin_u))
+        all_v_valid = np.all((v >= margin_v) & (v < height - margin_v))
         
         return all_u_valid and all_v_valid
 
@@ -129,15 +131,17 @@ class Initialization:
         object_center = (object_min + object_max) / 2
         return object_min, object_max, object_center
 
-    def initial_position(self, points_world, min_alt_buffer):
+    def initial_position(self, points_world, min_alt_buffer, camera_pos):
         views = []
         _, object_max, object_center = self.get_object_properties(points_world)
         y_init = max(object_max[1] * min_alt_buffer, self.min_height)
         dy = y_init - object_center[1]
-        r_init = dy / np.sin(self.max_elev_rad)
-        r_azi = r_init * np.cos(self.max_elev_rad)
+        r_azi = dy / np.tan(self.max_elev_rad)
         
-        initial_position = np.array([object_center[0] , y_init, object_center[2]+ r_azi])
+        radial_direction = (camera_pos[[0,2]]-object_center[[0,2]])
+        radial_direction /= np.linalg.norm(radial_direction)
+                
+        initial_position = np.array([object_center[0] + r_azi * radial_direction[0], y_init, object_center[2] + r_azi * radial_direction[1]])
         initial_quaternion = compute_lookat_quaternion(initial_position, object_center)
 
         views.append({"view_id":0,"pos":initial_position, "quat": initial_quaternion})        
