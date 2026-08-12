@@ -19,7 +19,7 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.02
+VOXEL_SIZE = 0.005
 BBOX_MARGIN = 0.05
 FLOOR_HEIGHT = 0.0
 HEIGHT_THRESHOLD = 1e-3
@@ -33,7 +33,7 @@ SIZE_MARGIN = 1.5 # Multiplier to ensure the entire object fits within the camer
 MIN_ALT_BUFFER = 1.2
 
 # Object Type
-OBJECT_TYPE = "cylinder_0.5m"
+OBJECT_TYPE = "cylinder_0.3m"
 
 # plotting option
 PLOT_VOXEL_CENTERS = False
