@@ -1,6 +1,0 @@
-INPUT: RGB-D Image
-
-1. Depth Image Processing
-2. Convert to set of voxels
-3. Each voxel has one of three states: unknown, filled, empty
-4. With new RGB-D images received, the internal map of voxels gets updated. 
