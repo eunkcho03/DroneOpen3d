@@ -19,7 +19,7 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.015
+VOXEL_SIZE = 0.007
 BBOX_MARGIN = 0.05
 FLOOR_HEIGHT = 0.0
 HEIGHT_THRESHOLD = 1e-3
@@ -33,7 +33,7 @@ SIZE_MARGIN = 1.5 # Multiplier to ensure the entire object fits within the camer
 MIN_ALT_BUFFER = 1.2
 
 # Object Type
-OBJECT_TYPE = "sphere_1.0m"
+OBJECT_TYPE = "chair"
 
 # plotting option
 PLOT_VOXEL_CENTERS = False
@@ -221,6 +221,15 @@ def main():
                     output_file_path=os.path.join(results_folder, f'view_evaluation_history_{VOXEL_SIZE}_{OBJECT_TYPE}.png'),
                 )
                 
+                plot_voxel_centers_3d(
+                    occupied_centers=recon.occupied_surface_centers, 
+                    unknown_centers = recon.unknown_surface_centers, 
+                    bbox_corners = recon.bbox_corners,
+                    title=(
+                        "Occupied and Unknown Voxels - "
+                        f"View {detected_view_count}"
+                    ),
+                )
                 timing_file = os.path.join(results_folder, f'refinement_times_{VOXEL_SIZE}_{OBJECT_TYPE}.npy')
                 np.save(timing_file, np.array(refinement_time_history))
                 print(f"Saved refinement timing history to {timing_file}")

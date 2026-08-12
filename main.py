@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import time
 from nbv.nbv_main import NextBestViewPlanner, CameraIntrinsics
 from functions_compute import ExtrusionFusionReconstruction
 from functions_camera import  filter_by_height, Initialization
@@ -19,7 +20,7 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.01 
+VOXEL_SIZE = 0.02 
 BBOX_MARGIN = 0.05
 FLOOR_HEIGHT = 0.0
 HEIGHT_THRESHOLD = 1e-3
@@ -36,7 +37,7 @@ MAX_ELEV_DEG = 30
 
 # stopping condition5
 VOLUME_CHANGE_THRESHOLD = 0.03
-VOLUME_STABLE_LIMIT = 3
+VOLUME_STABLE_LIMIT = 10
 
 # initialisation
 MIN_ALT_BUFFER = 1.3
@@ -78,6 +79,8 @@ def main():
     prev_volume = None
     unknown_voxel_history = [] # number of unknown voxels
     position_history = []
+    refinement_time_history = []
+
     
     # initialisation state
     initial_target_sent = False
@@ -148,6 +151,7 @@ def main():
                     waiting_for_nbv_move = False
                     pending_nbv_position = None
             
+            start_time = time.time()
             recon.carve_with_depth_image(
                 depth=depth,
                 fov_degrees=fov,
@@ -158,6 +162,8 @@ def main():
                 height_threshold=HEIGHT_THRESHOLD
             )
             unknown_voxel_history.append(recon.unknown_count)
+            end_time = time.time()
+            refinement_time_history.append(end_time - start_time)
             view_history.append(detected_view_count)
             position_history.append(position)
             volume_history.append(recon.occupied_volume + recon.unknown_volume)
@@ -169,6 +175,9 @@ def main():
                 f"\nCamera position used: {position}"
                 "\n===================================================="
             )
+            
+            print(f"Refinment time for this view: {end_time - start_time:.3f} seconds"
+                  f"Refinement time history: {refinement_time_history}")
             
             #if PLOT_VOXEL_CENTERS:
             #    plot_voxel_centers_3d(

@@ -1,0 +1,76 @@
+====================================================
+ VOXEL SIZE:  0.02 
+ OBJECT TYPE:  chair 
+====================================================
+Total Refinement Time: 9.2867 seconds
+Average Time per View: 0.3715 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.04318711627246393
+FINAL ERROR 56.760840515232836
+Absolute voxel size: 0.0120 meters
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.02_chair.npy
+UNKNOWN_COUNT HISTORY [107503, 58820, 43339, 34352, 28622, 27251, 27179, 27170, 27076, 14646, 13959, 13630, 13261, 13157, 13042, 12999, 12987, 11154, 11006, 10987, 10986, 10982, 10978, 10976, 10975]
+REFINEMENT_TIME HISTORY (s) ['1.6237', '0.4633', '0.5495', '0.3824', '0.3785', '0.4203', '0.3472', '0.2728', '0.3270', '0.4425', '0.2743', '0.2219', '0.2640', '0.2710', '0.2428', '0.1763', '0.3021', '0.3579', '0.3636', '0.2152', '0.2802', '0.2857', '0.2909', '0.2143', '0.3192']
+
+===================================================
+
+====================================================
+ VOXEL SIZE:  0.01 
+ OBJECT TYPE:  chair 
+====================================================
+Total Refinement Time: 24.0530 seconds
+Average Time per View: 0.9621 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.03604798983525356
+FINAL ERROR 30.847198729541837
+Absolute voxel size: 0.0060 meters
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.01_chair.npy
+UNKNOWN_COUNT HISTORY [863931, 491081, 356297, 297996, 252845, 241436, 240740, 240581, 239976, 138899, 133333, 130728, 127566, 126372, 124928, 123957, 123867, 115110, 114228, 114004, 113963, 113943, 113925, 113912, 113891]
+REFINEMENT_TIME HISTORY (s) ['10.0060', '1.9283', '1.1646', '0.7600', '0.7054', '0.5862', '0.5415', '0.4880', '0.5521', '0.8696', '0.4342', '0.3787', '0.4078', '0.4174', '0.4140', '0.3622', '0.3989', '0.5319', '0.4807', '0.4263', '0.4343', '0.4303', '0.4561', '0.4016']
+
+====================================================
+ VOXEL SIZE:  0.007 
+ OBJECT TYPE:  chair 
+====================================================
+Total Refinement Time: 54.1795 seconds
+Average Time per View: 2.1672 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.03468514223879055
+FINAL ERROR 25.900326765045246
+Absolute voxel size: 0.0042 meters
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.007_chair.npy
+UNKNOWN_COUNT HISTORY [2519668, 1452875, 1023155, 894013, 762845, 730193, 728403, 727925, 726260, 432436, 414552, 406713, 397244, 394129, 389366, 386148, 385814, 365695, 364886, 364603, 364438, 364201, 364105, 364063, 363974]
+REFINEMENT_TIME HISTORY (s) ['27.0260', '6.0909', '3.0795', '0.6785', '0.6736', '1.0168', '0.8989', '0.8753', '0.9494', '1.8173', '0.7923', '0.6878', '0.7691', '0.7038', '0.7448', '0.7869', '0.7506', '0.8308', '0.7377', '0.6709', '0.7269', '0.7051', '0.7458', '0.6955', '0.7254']
+
+====================================================
+ VOXEL SIZE:  0.005 
+ OBJECT TYPE:  chair 
+====================================================
+Total Refinement Time: 136.0627 seconds
+Average Time per View: 5.4425 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.03276296362648306
+FINAL ERROR 18.923191894897652
+Absolute voxel size: 0.0030 meters
+D:\Thesis_Drone\DroneOpen3d\functions_print.py:168: UserWarning: Creating legend with loc="best" can be slow with large amounts of data.
+  plt.tight_layout()
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.005_chair.npy
+UNKNOWN_COUNT HISTORY [6881949, 4012045, 2787171, 2441164, 2092420, 2003818, 1998918, 1997459, 1993505, 1189773, 1145537, 1124906, 1102702, 1091287, 1080133, 1074170, 1073656, 1023885, 1015208, 1009747, 1006371, 1004357, 1003003, 1002144, 1001650]
+REFINEMENT_TIME HISTORY (s) ['67.0642', '17.9186', '9.0648', '3.4302', '3.7642', '2.0937', '2.1322', '2.2226', '1.9330', '5.2989', '1.6277', '1.3607', '1.4948', '1.2520', '1.4356', '1.3359', '1.6987', '1.4784', '1.3798', '1.2368', '1.3639', '1.3680', '1.3975', '1.2817', '1.4291']
+
+
+====================================================
+ VOXEL SIZE:  0.003 
+ OBJECT TYPE:  chair 
+====================================================
+Total Refinement Time: 601.6062 seconds
+Average Time per View: 24.0642 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.031347942537423706
+FINAL ERROR 13.786940289944896
+Absolute voxel size: 0.0018 meters
+D:\Thesis_Drone\DroneOpen3d\functions_print.py:168: UserWarning: Creating legend with loc="best" can be slow with large amounts of data.
+  plt.tight_layout()
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.003_chair.npy
+UNKNOWN_COUNT HISTORY [32285574, 18783956, 13351373, 11704705, 10065575, 9635659, 9606914, 9594826, 9728071, 5847150, 5577332, 5451401, 5337579, 5287830, 5236899, 5206672, 5204006, 5014917, 5000359, 4992481, 4989368, 4987136, 4985557, 4984097, 4983115]
+REFINEMENT_TIME HISTORY (s) ['298.8338', '94.6841', '47.2047', '14.8249', '14.4018', '8.6873', '7.0959', '7.7791', '7.1844', '20.0465', '6.1263', '6.5146', '5.3947', '5.3057', '5.2390', '4.9827', '5.5096', '5.6127', '5.3014', '4.9834', '5.1505', '5.3867', '4.9469', '5.3806', '5.0288']
