@@ -19,7 +19,7 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.005 
+VOXEL_SIZE = 0.0075
 BBOX_MARGIN = 0.05
 FLOOR_HEIGHT = 0.0
 HEIGHT_THRESHOLD = 1e-3
@@ -33,11 +33,11 @@ SIZE_MARGIN = 1.5 # Multiplier to ensure the entire object fits within the camer
 MIN_ALT_BUFFER = 1.2
 
 # Object Type
-OBJECT_TYPE = "cube_1m"
+OBJECT_TYPE = "cube_0.5m"
 
 # plotting option
-PLOT_VOXEL_CENTERS = True
-PLOT_INTERMEDIATE_RESULTS = True
+PLOT_VOXEL_CENTERS = False
+PLOT_INTERMEDIATE_RESULTS = False
 
 def is_drone_at_target(current_position, target_position, tolerance):
     distance = np.linalg.norm(current_position - target_position)
@@ -205,7 +205,9 @@ def main():
                 print(f"Total Refinement Time: {total_refinement_time:.4f} seconds")
                 print(f"Average Time per View: {average_time_per_view:.4f} seconds")
                 print(f"Total Views Processed: {total_views_processed}")
-                print(f"Final Accuracy: {recon.occupied_volume / true_volume * 100:.2f}%")
+                print('FINAL VOLUME ESTIMATE', volume_history[-1])
+                print('FINAL ERROR', ((volume_history[-1] - true_volume) / true_volume * 100))
+                print(f"Absolute voxel size: {recon.voxel_size:.4f} meters")
 
                 results_folder = "voxel_resolution_results"
                 os.makedirs(results_folder, exist_ok=True)
@@ -225,6 +227,7 @@ def main():
                 
                 print('UNKNOWN_COUNT HISTORY', unknown_voxel_history)
                 print('REFINEMENT_TIME HISTORY (s)', [f"{t:.4f}" for t in refinement_time_history])
+
                 break 
                             
             recon.surface_centers()
