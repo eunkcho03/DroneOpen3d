@@ -13,3 +13,47 @@ D:\Thesis_Drone\DroneOpen3d\functions_print.py:168: UserWarning: Creating legend
 Saved refinement timing history to voxel_resolution_results\refinement_times_0.003_mug.npy
 UNKNOWN_COUNT HISTORY [32583854, 15976244, 10629375, 8530892, 7457713, 7290126, 7209619, 7174363, 7152545, 7141037, 7134614, 7128208, 7122256, 7115740, 7111060, 7107779, 7104617, 7101803, 7099758, 7097744, 7095824, 7093596, 7091862, 7090459, 7088968]
 REFINEMENT_TIME HISTORY (s) ['83.3744', '102.2285', '33.3418', '15.1401', '9.9420', '5.8557', '5.9237', '5.3944', '5.5139', '5.2941', '4.9705', '7.8560', '6.1826', '5.7985', '6.2009', '6.0642', '7.6840', '6.0512', '7.3823', '5.8897', '5.7784', '5.9284', '5.8740', '7.8810', '5.8559']
+
+====================================================
+ VOXEL SIZE:  0.005 
+ OBJECT TYPE:  mug 
+====================================================
+Total Refinement Time: 85.5041 seconds
+Average Time per View: 3.4202 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.0022107642930367247
+FINAL ERROR 8.017570763479565
+Absolute voxel size: 0.0011 meters
+D:\Thesis_Drone\DroneOpen3d\functions_print.py:168: UserWarning: Creating legend with loc="best" can be slow with large amounts of data.
+  plt.tight_layout()
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.005_mug.npy
+UNKNOWN_COUNT HISTORY [7043589, 3458408, 2254311, 1796319, 1558504, 1520120, 1502919, 1495875, 1491330, 1488123, 1486362, 1484687, 1483160, 1481339, 1479991, 1479116, 1478337, 1477698, 1477136, 1476617, 1476128, 1475580, 1475157, 1474824, 1474433]
+REFINEMENT_TIME HISTORY (s) ['19.4407', '23.2423', '8.0925', '4.0869', '2.5849', '1.7306', '1.4992', '1.5635', '1.7651', '1.3134', '1.2897', '1.2153', '1.2686', '1.4062', '1.3511', '1.2518', '1.3160', '1.5514', '1.3291', '1.2914', '1.4084', '1.4120', '1.2956', '1.4501', '1.3482']
+
+====================================================
+ VOXEL SIZE:  0.007 
+ OBJECT TYPE:  mug 
+====================================================
+Total Refinement Time: 27.2527 seconds
+Average Time per View: 1.0901 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.0022933092668479763
+FINAL ERROR 12.050704272063117
+Absolute voxel size: 0.0015 meters
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.007_mug.npy
+UNKNOWN_COUNT HISTORY [2558651, 1270979, 813316, 644578, 556718, 542535, 536230, 533783, 532209, 530715, 529902, 529205, 528538, 527766, 527099, 526695, 526413, 526138, 525941, 525758, 525537, 525326, 525160, 525051, 524912]
+REFINEMENT_TIME HISTORY (s) ['5.9805', '6.4798', '2.2615', '1.1577', '0.8358', '0.5702', '0.5250', '0.6288', '0.5659', '0.4582', '0.4210', '0.6093', '0.4238', '0.5657', '0.4339', '0.4932', '0.4305', '0.4649', '0.5212', '0.6401', '0.5262', '0.5617', '0.5688', '0.5658', '0.5632']
+
+====================================================
+ VOXEL SIZE:  0.01 
+ OBJECT TYPE:  mug 
+====================================================
+Total Refinement Time: 12.0483 seconds
+Average Time per View: 0.4819 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.0023698385640857954
+FINAL ERROR 15.789912837129336
+Absolute voxel size: 0.0022 meters
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.01_mug.npy
+UNKNOWN_COUNT HISTORY [877268, 439111, 271047, 211908, 180781, 175742, 173512, 172664, 172102, 171376, 171025, 170715, 170367, 170022, 169716, 169578, 169478, 169387, 169328, 169276, 169211, 169148, 169089, 169051, 168990]
+REFINEMENT_TIME HISTORY (s) ['2.6035', '2.4626', '0.8570', '0.4682', '0.3826', '0.3291', '0.3356', '0.2863', '0.3197', '0.2121', '0.2533', '0.2286', '0.1971', '0.2722', '0.2180', '0.2164', '0.2318', '0.2383', '0.2497', '0.2740', '0.3051', '0.2464', '0.2699', '0.3319', '0.2589']

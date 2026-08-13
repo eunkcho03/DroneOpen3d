@@ -1,0 +1,62 @@
+
+====================================================
+ VOXEL SIZE:  0.003 
+ OBJECT TYPE:  bowl 
+====================================================
+Total Refinement Time: 151.3203 seconds
+Average Time per View: 6.0528 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.003022273893592586
+FINAL ERROR 3.9988579256222825
+Absolute voxel size: 0.0009 meters
+D:\Thesis_Drone\DroneOpen3d\functions_print.py:168: UserWarning: Creating legend with loc="best" can be slow with large amounts of data.
+  plt.tight_layout()
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.003_bowl.npy
+UNKNOWN_COUNT HISTORY [14269852, 9209807, 6410265, 5153250, 4676874, 4534393, 4463069, 4408638, 4391114, 4327093, 4304627, 4282998, 4261163, 4240412, 4229682, 4224397, 4220714, 4218054, 4215878, 4213888, 4211790, 4209741, 4207764, 4206113, 4204693]
+REFINEMENT_TIME HISTORY (s) ['48.3034', '18.9049', '11.6031', '7.1729', '4.0061', '3.3637', '2.8377', '2.9787', '2.7761', '3.0006', '2.5777', '2.6530', '3.2092', '2.9784', '3.0509', '2.9159', '3.0649', '3.1425', '2.9021', '3.0006', '3.0146', '3.6838', '3.5130', '3.4410', '3.2253']
+
+====================================================
+ VOXEL SIZE:  0.005 
+ OBJECT TYPE:  bowl 
+====================================================
+Total Refinement Time: 41.2183 seconds
+Average Time per View: 1.6487 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.0031584567649997467
+FINAL ERROR 8.685019271026077
+Absolute voxel size: 0.0014 meters
+D:\Thesis_Drone\DroneOpen3d\functions_print.py:168: UserWarning: Creating legend with loc="best" can be slow with large amounts of data.
+  plt.tight_layout()
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.005_bowl.npy
+UNKNOWN_COUNT HISTORY [3055440, 2006233, 1351106, 1077629, 973007, 940941, 925224, 913503, 909779, 894070, 888659, 883175, 877583, 872324, 869298, 867746, 866684, 865919, 865285, 864763, 864176, 863559, 863018, 862524, 862133]
+REFINEMENT_TIME HISTORY (s) ['10.3627', '6.2694', '3.5107', '2.1620', '1.1782', '0.9279', '0.8201', '0.8401', '0.7978', '0.6794', '0.8824', '0.8453', '0.9511', '0.7661', '0.8921', '0.8041', '0.8110', '0.8457', '0.8735', '1.0927', '0.9917', '0.9870', '0.7539', '1.1115', '1.0621']
+
+====================================================
+ VOXEL SIZE:  0.007 
+ OBJECT TYPE:  bowl 
+====================================================
+Total Refinement Time: 16.9296 seconds
+Average Time per View: 0.6772 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.003293983227839375
+FINAL ERROR 13.348593073487217
+Absolute voxel size: 0.0020 meters
+D:\Thesis_Drone\DroneOpen3d\functions_print.py:168: UserWarning: Creating legend with loc="best" can be slow with large amounts of data.
+  plt.tight_layout()
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.007_bowl.npy
+UNKNOWN_COUNT HISTORY [1109740, 735932, 479537, 379426, 340780, 328904, 323265, 319007, 317718, 311430, 309127, 306854, 304582, 302332, 300993, 300314, 299853, 299572, 299302, 299090, 298863, 298660, 298439, 298233, 298094]
+REFINEMENT_TIME HISTORY (s) ['4.2608', '2.7006', '1.3894', '0.7716', '0.5637', '0.4363', '0.4881', '0.4774', '0.4911', '0.3323', '0.3517', '0.2772', '0.2778', '0.3224', '0.3117', '0.3009', '0.2801', '0.3073', '0.3473', '0.3827', '0.3537', '0.3733', '0.3401', '0.3946', '0.3976']
+
+====================================================
+ VOXEL SIZE:  0.01 
+ OBJECT TYPE:  bowl 
+====================================================
+Total Refinement Time: 8.7391 seconds
+Average Time per View: 0.3496 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.003444411349690148
+FINAL ERROR 18.524944861306246
+Absolute voxel size: 0.0029 meters
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.01_bowl.npy
+UNKNOWN_COUNT HISTORY [374152, 253787, 156578, 122174, 108455, 104109, 102130, 100602, 100130, 97640, 96708, 95800, 94879, 93960, 93346, 93081, 92946, 92849, 92774, 92714, 92630, 92554, 92478, 92421, 92375]
+REFINEMENT_TIME HISTORY (s) ['2.1399', '1.0315', '0.8045', '0.3564', '0.2837', '0.2784', '0.2799', '0.2457', '0.2806', '0.1691', '0.1811', '0.1948', '0.1720', '0.1630', '0.1957', '0.2100', '0.1580', '0.1860', '0.1803', '0.2190', '0.1853', '0.1745', '0.1902', '0.2440', '0.2155']

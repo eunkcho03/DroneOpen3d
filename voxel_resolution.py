@@ -19,7 +19,7 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.005
+VOXEL_SIZE = 0.003
 BBOX_MARGIN = 0.05
 FLOOR_HEIGHT = 0.0
 HEIGHT_THRESHOLD = 1e-3
@@ -30,10 +30,10 @@ MAX_ELEV_DEG = 40
 # fixed view and init parameters
 NBV_MIN_HEIGHT = 1e-1
 SIZE_MARGIN = 2.0 # Multiplier to ensure the entire object fits within the camera FOV
-MIN_ALT_BUFFER = 2
+MIN_ALT_BUFFER = 4
 
 # Object Type
-OBJECT_TYPE = "mug"
+OBJECT_TYPE = "sports ball"
 
 # plotting option
 PLOT_VOXEL_CENTERS = False
