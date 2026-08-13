@@ -19,21 +19,21 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.007
+VOXEL_SIZE = 0.005
 BBOX_MARGIN = 0.05
 FLOOR_HEIGHT = 0.0
 HEIGHT_THRESHOLD = 1e-3
 NBV_POSITION_TOLERANCE = 0.05
-MAX_ELEV_DEG = 30
+MAX_ELEV_DEG = 40
 
 
 # fixed view and init parameters
-NBV_MIN_HEIGHT = 1e-2
-SIZE_MARGIN = 1.5 # Multiplier to ensure the entire object fits within the camera FOV
-MIN_ALT_BUFFER = 1.2
+NBV_MIN_HEIGHT = 1e-1
+SIZE_MARGIN = 2.0 # Multiplier to ensure the entire object fits within the camera FOV
+MIN_ALT_BUFFER = 2
 
 # Object Type
-OBJECT_TYPE = "chair"
+OBJECT_TYPE = "mug"
 
 # plotting option
 PLOT_VOXEL_CENTERS = False

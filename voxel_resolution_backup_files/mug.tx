@@ -1,0 +1,15 @@
+====================================================
+ VOXEL SIZE:  0.003 
+ OBJECT TYPE:  mug 
+====================================================
+Total Refinement Time: 367.4062 seconds
+Average Time per View: 14.6962 seconds
+Total Views Processed: 25
+FINAL VOLUME ESTIMATE 0.002140201422144263
+FINAL ERROR 4.56988078408739
+Absolute voxel size: 0.0007 meters
+D:\Thesis_Drone\DroneOpen3d\functions_print.py:168: UserWarning: Creating legend with loc="best" can be slow with large amounts of data.
+  plt.tight_layout()
+Saved refinement timing history to voxel_resolution_results\refinement_times_0.003_mug.npy
+UNKNOWN_COUNT HISTORY [32583854, 15976244, 10629375, 8530892, 7457713, 7290126, 7209619, 7174363, 7152545, 7141037, 7134614, 7128208, 7122256, 7115740, 7111060, 7107779, 7104617, 7101803, 7099758, 7097744, 7095824, 7093596, 7091862, 7090459, 7088968]
+REFINEMENT_TIME HISTORY (s) ['83.3744', '102.2285', '33.3418', '15.1401', '9.9420', '5.8557', '5.9237', '5.3944', '5.5139', '5.2941', '4.9705', '7.8560', '6.1826', '5.7985', '6.2009', '6.0642', '7.6840', '6.0512', '7.3823', '5.8897', '5.7784', '5.9284', '5.8740', '7.8810', '5.8559']

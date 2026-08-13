@@ -115,8 +115,8 @@ class ExtrusionFusionReconstruction:
         bbox_max = points_world.max(axis=0).copy()
         
         initial_bbox_dimensions = bbox_max - bbox_min
-        shortest_length = initial_bbox_dimensions.min()
-        self.voxel_size = self.voxel_size_ratio * shortest_length
+        mean_length = np.mean(initial_bbox_dimensions)
+        self.voxel_size = self.voxel_size_ratio * mean_length
 
         bbox_min[[0, 2]] -= self.bbox_margin
         bbox_max[[0, 2]] += self.bbox_margin
