@@ -181,9 +181,9 @@ class ExtrusionFusionReconstruction:
         return np.unique(indices, axis=0)
 
     def _indices_to_centers_from_array(self, indices):
-        if indices.size == 0:
-            return np.empty((0, 3), dtype=np.float64)
-        indices = indices.reshape(-1, 3)
+        #if indices.size == 0:
+        #    return np.empty((0, 3), dtype=np.float64)
+        #indices = indices.reshape(-1, 3)
         return self.bbox_min + (indices + 0.5) * self.voxel_size
 
     def _update_outputs(self):

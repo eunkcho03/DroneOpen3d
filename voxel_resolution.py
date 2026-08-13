@@ -19,9 +19,9 @@ NBV_HOST = "127.0.0.1"
 NBV_PORT = 9020
 
 # input
-VOXEL_SIZE = 0.003
+VOXEL_SIZE = 0.01
 BBOX_MARGIN = 0.05
-FLOOR_HEIGHT = 0.0
+FLOOR_HEIGHT = 0.05
 HEIGHT_THRESHOLD = 1e-3
 NBV_POSITION_TOLERANCE = 0.05
 MAX_ELEV_DEG = 40
@@ -36,8 +36,8 @@ MIN_ALT_BUFFER = 4
 OBJECT_TYPE = "sports ball"
 
 # plotting option
-PLOT_VOXEL_CENTERS = False
-PLOT_INTERMEDIATE_RESULTS = False
+PLOT_VOXEL_CENTERS = True
+PLOT_INTERMEDIATE_RESULTS = True
 
 def is_drone_at_target(current_position, target_position, tolerance):
     distance = np.linalg.norm(current_position - target_position)
